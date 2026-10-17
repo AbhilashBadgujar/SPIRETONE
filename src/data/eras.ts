@@ -1,8 +1,7 @@
 import type { EraId } from './ids';
 
 // Per-era look presets (GDD §6 "one data asset each"). Meshes never change
-// between eras; only these values do. Ambient particles and music stems
-// join in Step 9.
+// between eras; only these values do.
 //
 // music.root / music.scale are PLACEHOLDERS: the GDD gives every era a root
 // key but doesn't say which. Swap them here.
@@ -27,6 +26,10 @@ export interface EraPreset {
   roughness: number;
   /** Emissive toggle: windows glow instead of reading as dark glass. */
   litWindows: boolean;
+  /** Gear animation toggle: bridges carry a turning cog (Overclock eras). */
+  gears: boolean;
+  /** GDD §6 ambient particle system. */
+  ambient: 'gulls' | 'embers' | 'steam' | 'motes';
   sun: {
     color: number;
     intensity: number;
@@ -40,6 +43,7 @@ export interface EraPreset {
     ground: number;
     intensity: number;
   };
+  /** Backdrop gradient. The camera looks down, so it only shows past the ocean's edge. */
   sky: {
     top: number;
     bottom: number;
@@ -54,7 +58,14 @@ export interface EraPreset {
     foam: number;
     waveSpeed: number;
     waveHeight: number;
+    roughness: number;
+    /** 0..1 strength of stars twinkling in the water. */
+    stars: number;
+    /** Aurora reflected on the far water, near color then far, or null. */
+    aurora: readonly [number, number] | null;
   };
+  /** Lighthouse beam strength (additive). */
+  beams: number;
   /** Root key for drop notes and chords. */
   music: {
     /** MIDI note number of the tonic. */
@@ -73,11 +84,14 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     island: { grass: 0x9cc46a, sand: 0xeedcae, rock: 0x8e857a },
     roughness: 0.85,
     litWindows: false,
+    gears: false,
+    ambient: 'gulls',
     sun: { color: 0xfff0d4, intensity: 2.6, elevation: 38, azimuth: 35 },
     skyLight: { sky: 0xcfe8ff, ground: 0xe8d3a8, intensity: 1.15 },
     sky: { top: 0x7cc3ea, bottom: 0xf7e9cc },
     fog: { color: 0xeee6d2, density: 0.012 },
-    ocean: { shallow: 0x35c4bf, deep: 0x16708f, foam: 0xffffff, waveSpeed: 0.6, waveHeight: 0.12 },
+    ocean: { shallow: 0x35c4bf, deep: 0x16708f, foam: 0xffffff, waveSpeed: 0.6, waveHeight: 0.12, roughness: 0.3, stars: 0, aurora: null },
+    beams: 0.22,
     music: { root: 62, scale: 'major' }, // D
   },
   // Golden hour, stucco, clay roofs, lanterns.
@@ -85,44 +99,55 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     id: 'ERA_2',
     name: 'Terracotta Bastion',
     palette: { base: 0xf0dcbc, roof: 0xc4573a, accent: 0x7a4b2e, water: 0x56b6c4, emissive: 0xffb347 },
-    island: { grass: 0xb4a35c, sand: 0xe4c38e, rock: 0x9a7b62 },
+    island: { grass: 0xa9a85e, sand: 0xe8c48c, rock: 0xa07a5c },
     roughness: 0.9,
     litWindows: true,
-    sun: { color: 0xffb46a, intensity: 2.4, elevation: 16, azimuth: -55 },
-    skyLight: { sky: 0xffd2a0, ground: 0xb08860, intensity: 0.9 },
-    sky: { top: 0x6a8cc4, bottom: 0xffc27a },
-    fog: { color: 0xf2b77e, density: 0.014 },
-    ocean: { shallow: 0x2f97a0, deep: 0x1b4c6b, foam: 0xffe6c8, waveSpeed: 0.5, waveHeight: 0.1 },
+    gears: false,
+    ambient: 'embers',
+    sun: { color: 0xffb46a, intensity: 2.5, elevation: 17, azimuth: -55 },
+    // Golden hour: the warmth comes from the low sun; the sky above stays blue,
+    // or the water under it goes olive.
+    skyLight: { sky: 0xa8c4f0, ground: 0xb08860, intensity: 1.05 },
+    sky: { top: 0x4f73b8, bottom: 0xffb26e },
+    fog: { color: 0xf7c28e, density: 0.0075 },
+    ocean: { shallow: 0x2a92c8, deep: 0x16357a, foam: 0xffe6c8, waveSpeed: 0.5, waveHeight: 0.1, roughness: 0.25, stars: 0, aurora: null },
+    beams: 0.2,
     music: { root: 57, scale: 'major' }, // A
   },
   // Stormy dusk, brass, copper, steam vents.
   ERA_3: {
     id: 'ERA_3',
     name: 'Clockwork Foundry',
-    palette: { base: 0xb8934a, roof: 0xb0683a, accent: 0x3e3a38, water: 0x6fa0a8, emissive: 0xff9a3c },
-    island: { grass: 0x5e6b5a, sand: 0x7d7466, rock: 0x4a4646 },
-    roughness: 0.55,
+    palette: { base: 0xcaa25a, roof: 0xb86a3c, accent: 0x4a4440, water: 0x6fa0a8, emissive: 0xff9a3c },
+    island: { grass: 0x66745e, sand: 0x8a7f6e, rock: 0x55504e },
+    roughness: 0.5,
     litWindows: true,
-    sun: { color: 0xc8d0e0, intensity: 1.5, elevation: 24, azimuth: 120 },
-    skyLight: { sky: 0x8a90a8, ground: 0x3a3430, intensity: 0.8 },
-    sky: { top: 0x272e3c, bottom: 0x6e6a78 },
-    fog: { color: 0x5a5866, density: 0.02 },
-    ocean: { shallow: 0x3b5a66, deep: 0x1e2e38, foam: 0xc8ccd4, waveSpeed: 1.0, waveHeight: 0.22 },
+    gears: true,
+    ambient: 'steam',
+    sun: { color: 0xdfe4f2, intensity: 2.1, elevation: 26, azimuth: 120 },
+    skyLight: { sky: 0xa4abc4, ground: 0x4c443c, intensity: 1.2 },
+    sky: { top: 0x2a3242, bottom: 0x8a8090 },
+    fog: { color: 0x5e6070, density: 0.015 },
+    ocean: { shallow: 0x46707c, deep: 0x1e2e38, foam: 0xd0d4dc, waveSpeed: 1.0, waveHeight: 0.22, roughness: 0.35, stars: 0, aurora: null },
+    beams: 0.12,
     music: { root: 59, scale: 'minor' }, // B minor
   },
   // Starfield ocean, obsidian, crystal, aurora.
   ERA_4: {
     id: 'ERA_4',
     name: 'Astral Citadel',
-    palette: { base: 0x2c2836, roof: 0x8fd8ff, accent: 0x6b5ca5, water: 0x7be0ff, emissive: 0x9cf6ff },
-    island: { grass: 0x2e2a40, sand: 0x4a4466, rock: 0x1c1a26 },
+    palette: { base: 0x3a3448, roof: 0x8fd8ff, accent: 0x7a6ab8, water: 0x7be0ff, emissive: 0x9cf6ff },
+    island: { grass: 0x37324c, sand: 0x544c72, rock: 0x221f2e },
     roughness: 0.35,
     litWindows: true,
-    sun: { color: 0xb8c8ff, intensity: 1.3, elevation: 42, azimuth: 200 },
-    skyLight: { sky: 0x6a6ab8, ground: 0x1a1430, intensity: 0.9 },
-    sky: { top: 0x060716, bottom: 0x2a1f4a },
-    fog: { color: 0x1a1636, density: 0.016 },
-    ocean: { shallow: 0x1c1c48, deep: 0x05050f, foam: 0x9cf6ff, waveSpeed: 0.35, waveHeight: 0.08 },
+    gears: true,
+    ambient: 'motes',
+    sun: { color: 0xc4d0ff, intensity: 1.6, elevation: 42, azimuth: 200 },
+    skyLight: { sky: 0x7a78c8, ground: 0x1a1430, intensity: 0.95 },
+    sky: { top: 0x04051a, bottom: 0x2a1f52 },
+    fog: { color: 0x14102c, density: 0.01 },
+    ocean: { shallow: 0x141640, deep: 0x04040e, foam: 0x9cf6ff, waveSpeed: 0.35, waveHeight: 0.06, roughness: 0.9, stars: 1, aurora: [0x4dffc0, 0x8a6cff] },
+    beams: 0.18,
     music: { root: 66, scale: 'major' }, // F#
   },
 };

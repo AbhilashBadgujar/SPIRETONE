@@ -49,6 +49,8 @@ export class Sound {
   private charge: { osc: OscillatorNode; gain: GainNode } | null = null;
   private mutedFlag = readMuted();
   private lastChirp = -Infinity;
+  /** A new era arrived at the peak; its fanfare plays when the sequence ends. */
+  private eraPending = false;
 
   constructor(private readonly game: Game) {
     // Browsers only allow audio after a gesture. Capture phase runs this
@@ -189,6 +191,17 @@ export class Sound {
       if (!ctx) return;
       this.arpeggio([0, 4, 7, 9, 12, 14], ctx.currentTime + 0.02, 0.06, 0.24);
       this.arpeggio([0, 7], ctx.currentTime + 0.02, 0, 0.18, -12);
+    });
+    events.on('era', () => (this.eraPending = true));
+    // Lands with the era card, after the Shards card has flown (ui/ceremony.ts).
+    events.on('ascendEnd', () => {
+      const ctx = this.ctx;
+      if (!this.eraPending || !ctx) return;
+      this.eraPending = false;
+      const t = ctx.currentTime + 0.75;
+      this.arpeggio([0, 2, 4, 7, 9, 12, 14, 16], t, 0.07, 0.2);
+      this.arpeggio([0, 4, 7], t, 0, 0.16, -12);
+      this.arpeggio([0], t, 0, 0.22, -24);
     });
     events.on('ascendLand', () => {
       const ctx = this.ctx;

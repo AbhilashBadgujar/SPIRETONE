@@ -58,6 +58,10 @@ export class Beams {
     this.mesh.renderOrder = 5;
   }
 
+  setOpacity(opacity: number): void {
+    this.material.opacity = opacity;
+  }
+
   setColor(hex: number): void {
     this.material.color.copy(new Color(hex));
   }

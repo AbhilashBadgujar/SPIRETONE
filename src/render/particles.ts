@@ -67,6 +67,11 @@ class Pool {
     for (let i = 0; i < capacity; i++) this.mesh.setMatrixAt(i, _m.makeScale(0, 0, 0));
   }
 
+  /** Particles still alive after the last update (capacity right after an emit). */
+  get alive(): number {
+    return this.live;
+  }
+
   emit(e: Emit): void {
     _color.set(e.color);
     for (let n = 0; n < e.count; n++) {

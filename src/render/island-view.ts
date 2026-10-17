@@ -62,6 +62,9 @@ export function dropPose(t: number): { dy: number; sy: number } | null {
 
 const _m = new Matrix4();
 const _anim = new Matrix4();
+const _spin = new Matrix4();
+/** Radians per second a bridge cog turns. */
+const GEAR_SPEED = 1.8;
 const _p = new Vector3();
 const _q = new Quaternion();
 const _s = new Vector3();
@@ -176,6 +179,9 @@ export class IslandView {
   private readonly plazaSlabs: Kind;
   private readonly fountains: Kind;
   private readonly bridges: Kind;
+  /** Part of the bridge mesh, shown where the era preset turns gears on. */
+  private readonly gears: Kind;
+  private readonly gearBases: Matrix4[] = [];
   private readonly kinds: Kind[];
 
   private readonly rockMaterial = new MeshStandardMaterial({ flatShading: true, roughness: 1 });
@@ -239,6 +245,7 @@ export class IslandView {
       ],
       grid.edges.length,
     );
+    this.gears = kind([{ geometry: M.bridgeGearGeometry(), slot: 'base' }], grid.edges.length);
     this.kinds = [
       this.blocks,
       this.windows,
@@ -250,6 +257,7 @@ export class IslandView {
       this.plazaSlabs,
       this.fountains,
       this.bridges,
+      this.gears,
     ];
 
     const rock = new Mesh(M.rockGeometry(), [this.rockMaterial, this.sandMaterial, this.rockMaterial]);
@@ -298,6 +306,15 @@ export class IslandView {
     this.crystal.rotation.y = time * 0.7;
     this.crystal.position.y = this.crystalY + Math.sin(time * 1.4) * 0.05;
     this.crystal.scale.setScalar(1 + this.crystalPulse);
+
+    if (this.gearBases.length) {
+      // Neighbors turn opposite ways, like meshed gears.
+      this.gearBases.forEach((base, i) => {
+        _spin.makeRotationX(time * GEAR_SPEED * (i % 2 ? 1 : -1));
+        this.gears.setMatrix(i, _anim.multiplyMatrices(base, _spin));
+      });
+      this.gears.flushMatrices();
+    }
   }
 
   applyPreset(p: EraPreset): void {
@@ -334,6 +351,7 @@ export class IslandView {
     const colors = this.colors;
 
     for (const k of this.kinds) k.reset();
+    this.gearBases.length = 0;
     this.ringMaxHeights.fill(0);
     this.lampPoints.length = 0;
     for (const refs of this.tops) refs.length = 0;
@@ -389,10 +407,15 @@ export class IslandView {
       const dz = columnZ(g, e.b) - az;
       const floor = Math.min(island.heights[e.a], island.heights[e.b]) - 1;
       const length = Math.hypot(dx, dz) - LAYOUT.blockDepth * 0.3;
-      this.bridges.push(
-        place(ax + dx / 2, LAYOUT.groundY + floor * H + 0.14, az + dz / 2, Math.atan2(dx, dz), 1, 1, length),
-        colors,
-      );
+      const deckY = LAYOUT.groundY + floor * H + 0.14;
+      const yaw = Math.atan2(dx, dz);
+      this.bridges.push(place(ax + dx / 2, deckY, az + dz / 2, yaw, 1, 1, length), colors);
+      // Overclock (Era III+): the bridge's cog stands on its deck and turns.
+      if (this.preset.gears && ev.columns[e.a].overclock + ev.columns[e.b].overclock > 0) {
+        const m = place(ax + dx / 2, deckY + M.GEAR_RADIUS + 0.06, az + dz / 2, yaw).clone();
+        this.gears.push(m, colors);
+        this.gearBases.push(m);
+      }
     }
 
     for (const k of this.kinds) k.commit();

@@ -189,6 +189,30 @@ export function bridgeRopeGeometry(): BufferGeometry {
   );
 }
 
+/**
+ * The bridge's cog (GDD §6 gear animation toggle): stands upright on the
+ * deck, turning about local x (across the deck). Origin at its hub.
+ */
+export const GEAR_RADIUS = 0.15;
+
+export function bridgeGearGeometry(): BufferGeometry {
+  const t = 0.07;
+  const parts: BufferGeometry[] = [
+    new CylinderGeometry(GEAR_RADIUS, GEAR_RADIUS, t, 12).rotateZ(Math.PI / 2),
+    new CylinderGeometry(0.05, 0.05, t + 0.05, 6).rotateZ(Math.PI / 2),
+  ];
+  const teeth = 8;
+  for (let i = 0; i < teeth; i++) {
+    const a = (i / teeth) * Math.PI * 2;
+    parts.push(
+      new BoxGeometry(t, 0.06, 0.07)
+        .translate(0, GEAR_RADIUS + 0.025, 0)
+        .rotateX(a),
+    );
+  }
+  return merge(...parts);
+}
+
 // --- island base -----------------------------------------------------------
 
 const ROCK_HEIGHT = 1.7;

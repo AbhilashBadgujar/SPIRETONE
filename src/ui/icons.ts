@@ -59,6 +59,17 @@ export const ICONS = {
     <path d="M9 15h6v6H9z" fill="currentColor" opacity=".5"/>
     <path d="M3 17.5C4.5 7 19.5 7 21 17.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="3 3"/>
     <path d="m17.6 15.4 3.4 2.4 1.4-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`),
+  gear: svg(`
+    ${[0, 45, 90, 135, 180, 225, 270, 315]
+      .map((a) => `<rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(${a} 12 12)" fill="currentColor"/>`)
+      .join('')}
+    <circle cx="12" cy="12" r="6.2" fill="none" stroke="currentColor" stroke-width="3.4"/>
+    <circle cx="12" cy="12" r="1.9" fill="currentColor" opacity=".6"/>`),
+  cascade: svg(`
+    <rect x="2.5" y="3" width="6.5" height="6.5" rx="1.2" fill="currentColor"/>
+    <rect x="9" y="9.5" width="6.5" height="6.5" rx="1.2" fill="currentColor" opacity=".75"/>
+    <rect x="15.5" y="16" width="6.5" height="6.5" rx="1.2" fill="currentColor" opacity=".5"/>
+    <path d="M9.5 3.8c3.6 0 5.6 1.6 6.3 4.4M16 10.3c3.4.2 5 1.9 5.4 4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>`),
   flag: svg(`
     <path d="M5.5 3v18.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
     <path d="M6.5 3.8h12l-3 4.3 3 4.3h-12z" fill="currentColor"/>`),

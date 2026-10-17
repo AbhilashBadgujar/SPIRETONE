@@ -2,6 +2,7 @@ import { Matrix4, Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { ERA_PRESETS } from '../data/eras';
 import { ERA_IDS, type EraIndex } from '../data/ids';
 import type { NodeId } from '../data/tree';
+import { Ambience } from '../render/ambience';
 import { CursorView, type CursorState } from '../render/cursor-view';
 import { Flock } from '../render/flock';
 import { Gulls } from '../render/gulls';
@@ -68,6 +69,7 @@ export class Game {
   /** Worker Gulls, one per owned Gull node. */
   private readonly flock = new Flock();
   private readonly juice: Juice;
+  private readonly ambience: Ambience;
   private readonly orbit: OrbitCursor;
 
   private readonly raycaster = new Raycaster();
@@ -113,6 +115,12 @@ export class Game {
     this.stage.scene.add(this.ocean.water, this.gulls.mesh);
     this.stage.turntable.add(this.view.root, this.cursorView.root, this.flock.birds, this.flock.blocks);
     this.juice = new Juice(grid, this.view, this.stage.turntable, this.events, () => this.state.run.island);
+    this.ambience = new Ambience(
+      grid,
+      () => this.state.run.island,
+      () => this.state.run.evaluation,
+    );
+    this.stage.turntable.add(...this.ambience.meshes);
 
     this.era = state.run.island.era;
     this.applyEra();
@@ -314,6 +322,7 @@ export class Game {
     this.cursorView.update(dt, this.time);
     this.view.update(dt, this.time);
     this.juice.update(dt, this.time);
+    this.ambience.update(dt);
     this.ocean.update(this.time);
     this.gulls.update(this.time);
     this.flock.setCount(effectsOf(this.state.meta.nodes).gulls, this.time);
@@ -406,7 +415,8 @@ export class Game {
   private swapIsland(): void {
     const shards = ascend(this.grid, this.state);
     if (shards === null) return;
-    if (this.state.run.island.era !== this.era) {
+    const eraChanged = this.state.run.island.era !== this.era;
+    if (eraChanged) {
       this.era = this.state.run.island.era;
       this.applyEra();
     }
@@ -415,6 +425,7 @@ export class Game {
     this.selected = 0;
     this.orbit.reset(this.cursorContext());
     this.events.emit('ascend', { shards });
+    if (eraChanged) this.events.emit('era', { era: this.era });
   }
 
   private updateTurntable(dt: number): void {
@@ -469,6 +480,9 @@ export class Game {
     this.view.applyPreset(preset);
     this.juice.applyPreset(preset);
     this.flock.applyPreset(preset);
+    this.ambience.applyPreset(preset);
+    // Ambient gulls are Era I's particle system; worker Gulls fly in every era.
+    this.gulls.mesh.visible = preset.ambient === 'gulls';
   }
 }
 

@@ -1,3 +1,4 @@
+import type { EraIndex } from '../data/ids';
 import type { NodeId } from '../data/tree';
 import type { DropRejection, DropOutcome } from '../sim/island';
 import type { ColumnId } from '../sim/grid';
@@ -20,6 +21,8 @@ export interface GameEvents {
   ascend: { shards: number };
   /** The new island touches down. */
   ascendLand: Record<string, never>;
+  /** At the peak, when the new island is in a later era than the last (GDD §6). */
+  era: { era: EraIndex };
   /** Sequence over; controls are back. */
   ascendEnd: { shards: number };
   pause: { reason: 'menu' | 'tree' };

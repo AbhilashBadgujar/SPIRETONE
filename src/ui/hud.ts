@@ -1,4 +1,5 @@
 import { Vector3 } from 'three';
+import { MODIFIER_MIN_ERA } from '../data/constants';
 import { ERA_PRESETS } from '../data/eras';
 import { ERA_IDS, HARMONY_TYPES, STRUCTURE_NAMES, type EraIndex, type StructureId } from '../data/ids';
 import type { Game } from '../game/game';
@@ -9,6 +10,7 @@ import { bonusesFor, canAscend, shardsOnAscend } from '../sim/run';
 import { AscendButton } from './ascend-button';
 import { DiscoveryBurst } from './burst';
 import { Ceremony } from './ceremony';
+import { EraCard } from './era-card';
 import { Floaters } from './floaters';
 import { ICONS, STRUCTURE_ICONS } from './icons';
 import { restartClass } from './restart-class';
@@ -78,6 +80,9 @@ export class Hud {
   private readonly floaters: Floaters;
   private readonly burst: DiscoveryBurst;
   private readonly ceremony: Ceremony;
+  private readonly eraCard: EraCard;
+  /** A new era reached at the peak, revealed once the Shards card has landed. */
+  private eraToReveal: EraIndex | null = null;
   private readonly veil: HTMLDivElement;
   private readonly treeBtn: HTMLButtonElement;
   private treeKey = '';
@@ -178,6 +183,7 @@ export class Hud {
     );
 
     this.ceremony = new Ceremony(root, () => this.shardPill);
+    this.eraCard = new EraCard(root);
 
     this.treeBtn = document.createElement('button');
     this.treeBtn.type = 'button';
@@ -284,6 +290,7 @@ export class Hud {
       // Labels pinned to the old island would hang in mid-air after the swap.
       this.floaters.clear();
     });
+    events.on('era', ({ era }) => (this.eraToReveal = era));
     events.on('ascend', ({ shards }) => {
       this.earned.fill(0);
       this.sincePop.fill(POP_MIN_GAP);
@@ -298,6 +305,11 @@ export class Hud {
         restartClass(this.shardPill, 'pop');
         // New Shards and something to spend them on: point at the tree.
         if (this.tree.anyAffordable()) this.treeBtn.classList.add('beckon');
+        if (this.eraToReveal !== null) {
+          const era = this.eraToReveal;
+          this.eraToReveal = null;
+          this.eraCard.show(era, Math.max(...this.game.grid.caps[era]));
+        }
       });
     });
 
@@ -340,13 +352,19 @@ export class Hud {
       // Many at once (a cascade): one summary tag instead of a wall of them.
       this.floaters.at(this.game.columnAnchor(column, this.anchor), `${ICONS.bridge}×${outcome.newBridges.length}`, 'tag');
     } else {
+      // Overclock eras: the bridge also shares base yield, so it wears a gear.
+      const gear = this.game.state.run.island.era >= MODIFIER_MIN_ERA.MOD_OVERCLOCK ? ICONS.gear : '';
       for (const e of outcome.newBridges) {
         const edge = grid.edges[e];
         this.game.columnAnchor(edge.a, this.anchor);
         this.game.columnAnchor(edge.b, this.anchorB);
         this.anchor.lerp(this.anchorB, 0.5);
-        this.floaters.at(this.anchor, `${ICONS.bridge}+${Math.round(k.K_M_BRIDGE * 100)}%`, 'tag');
+        this.floaters.at(this.anchor, `${ICONS.bridge}+${Math.round(k.K_M_BRIDGE * 100)}%${gear}`, 'tag');
       }
+    }
+    // Era IV Cascade: how many free blocks this drop set off.
+    if (outcome.placed.length > 1) {
+      this.floaters.at(this.game.columnAnchor(column, this.anchor), `${ICONS.cascade}×${outcome.placed.length - 1}`, 'tag');
     }
     if (!outcome.newTypes.includes('ST_PLAZA')) {
       for (const group of outcome.newPlazas) {

@@ -677,6 +677,101 @@ canvas {
   color: var(--hud-ink);
 }
 
+/* --- Era card (new era reached) ------------------------------------------ */
+
+.era-card {
+  position: absolute;
+  left: 50%;
+  /* Under the top bar (two rows on phones), above most of the island. */
+  top: clamp(120px, 16%, 200px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  translate: -50% 0;
+  text-shadow: var(--hud-text-shadow);
+}
+
+.era-card.play {
+  animation: era-card-life 3.8s ease-out forwards;
+}
+
+.era-card-hex {
+  width: 104px;
+  height: 118px;
+  filter: drop-shadow(0 0 26px rgba(255, 210, 94, 0.75)) drop-shadow(0 8px 16px rgba(0, 0, 0, 0.35));
+}
+
+.era-card-hex span {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  clip-path: polygon(50% 0, 100% 22%, 100% 78%, 50% 100%, 0 78%, 0 22%);
+  background: linear-gradient(180deg, #fff1b8, var(--hud-gold-deep));
+  color: #4a2a06;
+  font-size: 40px;
+  font-weight: 900;
+  text-shadow: none;
+}
+
+.era-card-name {
+  padding: 6px 18px;
+  border: 1px solid var(--hud-glass-edge);
+  border-radius: 999px;
+  /* Opaque enough that the cursor chip never shows through. */
+  background: rgba(10, 22, 34, 0.9);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.era-card-gains {
+  display: flex;
+  gap: 10px;
+}
+
+.era-card-gain {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 14px 6px 10px;
+  border: 1px solid var(--hud-glass-edge);
+  border-radius: 999px;
+  color: var(--hud-gold);
+  background: rgba(10, 22, 34, 0.9);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.era-card-gain svg {
+  width: 22px;
+  height: 22px;
+}
+
+.era-card-cap svg + svg {
+  width: 12px;
+  height: 12px;
+}
+
+.era-card.play .era-card-hex {
+  animation: era-hex-in 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+
+.era-card.play .era-card-name {
+  animation: era-rise 0.45s 0.25s ease-out both;
+}
+
+.era-card.play .era-card-cap {
+  animation: slot-pop 0.5s 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.5) both;
+}
+
+.era-card.play .era-card-sig {
+  animation: slot-pop 0.5s 0.65s cubic-bezier(0.2, 0.9, 0.3, 1.5) both;
+}
+
 /* --- Pause --------------------------------------------------------------- */
 
 .pause-veil {
@@ -843,6 +938,38 @@ canvas {
   80% { transform: translateX(2px); }
 }
 
+@keyframes era-card-life {
+  0% {
+    opacity: 0;
+  }
+  6%,
+  84% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: -50% -14px;
+  }
+}
+
+@keyframes era-hex-in {
+  0% {
+    scale: 0.2;
+    rotate: -25deg;
+  }
+  100% {
+    scale: 1;
+    rotate: 0deg;
+  }
+}
+
+@keyframes era-rise {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+
 @keyframes rapid-blink {
   50% {
     opacity: 0.35;
@@ -867,5 +994,10 @@ canvas {
   .shards.pop,
   .cost-chip.rapid .cost-rapid {
     animation: none;
+  }
+
+  /* The card still fades in and out; nothing flies. */
+  .era-card.play * {
+    animation: none !important;
   }
 }

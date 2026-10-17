@@ -24,6 +24,8 @@ const MAX_BRIDGE_BURSTS = 4;
 const ASCEND_SPARKLES = 15;
 /** Seconds between idle glints off a golden column. */
 const GLINT_EVERY = 0.55;
+/** Spark puffs along one cascade hop. */
+const TRAIL_POINTS = 6;
 
 interface Timer {
   t: number;
@@ -61,6 +63,8 @@ export class Juice {
         const start = delay + i * CASCADE_STAGGER;
         this.view.dropIn(c, start);
         this.after(start + DROP_FALL_TIME, () => this.land(c, before[c] !== now[c] && now[c] !== 'ST_EMPTY'));
+        // Era IV Cascade: sparks hop from the new Lighthouse to the free block it sends.
+        if (i > 0) this.after(start, () => this.trail(outcome.placed[i - 1], c));
       });
 
       this.after(delay + DROP_FALL_TIME, () => {
@@ -196,6 +200,7 @@ export class Juice {
     this.sparkColor.setHex(p.palette.emissive);
     this.foamColor.setHex(p.ocean.foam);
     this.beams.setColor(p.palette.emissive);
+    this.beams.setOpacity(p.beams);
   }
 
   update(dt: number, time: number): void {
@@ -274,6 +279,32 @@ export class Juice {
     const island = this.island();
     const y = island.inPlaza[c] ? LAYOUT.groundY + LAYOUT.plazaHeight : columnTopY(island.heights[c]);
     return out.set(columnX(this.grid, c), y + 0.2, columnZ(this.grid, c));
+  }
+
+  /** A hop of sparks arcing from one column's top to another's. */
+  private trail(from: ColumnId, to: ColumnId): void {
+    const a = this.top(from, this.at).clone();
+    const b = this.top(to, this.atB);
+    const lift = 0.8;
+    for (let k = 0; k <= TRAIL_POINTS; k++) {
+      const u = k / TRAIL_POINTS;
+      const x = a.x + (b.x - a.x) * u;
+      const z = a.z + (b.z - a.z) * u;
+      // A parabola over the straight line between the two tops.
+      const y = a.y + (b.y - a.y) * u + lift * 4 * u * (1 - u);
+      this.after(u * CASCADE_STAGGER, () =>
+        this.particles.sparks.emit({
+          origin: this.at.set(x, y, z),
+          count: 2,
+          color: this.sparkColor,
+          shape: 'sphere',
+          speed: [0.1, 0.4],
+          size: [0.025, 0.045],
+          life: [0.3, 0.55],
+          gravity: 0.5,
+        }),
+      );
+    }
   }
 
   /** Midpoint of a bridge deck (mirrors IslandView's bridge placement). */
