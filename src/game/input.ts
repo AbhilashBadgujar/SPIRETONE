@@ -186,7 +186,14 @@ export class Input {
 }
 
 function firstPad(): Gamepad | null {
-  for (const pad of navigator.getGamepads?.() ?? []) if (pad?.connected) return pad;
+  let pads: (Gamepad | null)[] = [];
+  try {
+    pads = navigator.getGamepads?.() ?? [];
+  } catch {
+    // A frame whose permissions policy blocks gamepads throws here.
+    return null;
+  }
+  for (const pad of pads) if (pad?.connected) return pad;
   return null;
 }
 

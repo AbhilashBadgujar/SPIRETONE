@@ -16,10 +16,12 @@ const AUTOSAVE_MS = 10_000;
 
 const grid = buildGrid(DEFAULT_CONSTANTS);
 const params = new URLSearchParams(location.search);
+// Hosts that drop the query string still pass a bare #token: #direct, #demo1..#demo4.
+const hash = location.hash.slice(1);
 
 // ?demo=1..4 starts on a filled island in that era and never touches the save.
 // ?fresh starts a new game (the next autosave replaces the old one).
-const demo = Number(params.get('demo'));
+const demo = Number(params.get('demo') ?? (/^demo[1-4]$/.test(hash) ? hash.slice(4) : null));
 const isDemo = demo >= 1 && demo <= 4;
 
 let state: GameState;
@@ -34,7 +36,7 @@ if (isDemo) {
 }
 
 // Orbit is the default (GDD §4); ?mode=direct until the settings screen exists.
-const mode = params.get('mode') === 'direct' ? 'direct' : 'orbit';
+const mode = params.get('mode') === 'direct' || hash === 'direct' ? 'direct' : 'orbit';
 
 const game = new Game(grid, state, document.getElementById('app')!, mode);
 const sound = new Sound(game);
