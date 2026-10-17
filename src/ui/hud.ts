@@ -1,0 +1,336 @@
+import { Vector3 } from 'three';
+import { ERA_PRESETS } from '../data/eras';
+import { ERA_IDS, HARMONY_TYPES, STRUCTURE_NAMES, type EraIndex, type StructureId } from '../data/ids';
+import type { Game } from '../game/game';
+import { formatNumber } from '../lib/format';
+import { ascendThreshold, totalBlocks } from '../sim/island';
+import { bonusesFor, canAscend, shardsOnAscend } from '../sim/run';
+import { AscendButton } from './ascend-button';
+import { DiscoveryBurst } from './burst';
+import { Floaters } from './floaters';
+import { ICONS, STRUCTURE_ICONS } from './icons';
+
+// Icon-first HUD. Numbers and icons only; names live in hover tooltips.
+//
+//   top-left    Resonance (rolling) + income per second
+//   top-center  Harmony multiplier, gauge to the era cap, structure-type slots
+//   top-right   Aether Shards + era badge
+//   cursor      cost chip with what the drop will become
+//   bottom      Ascend button (fill ring, hold ring, Shards preview)
+
+const ROMAN = ['I', 'II', 'III', 'IV'];
+/** Seconds between ambient "+N" pops anywhere on the island. */
+const POP_SPACING = 0.45;
+/** A column pops at most this often; each pop shows what it earned since its last. */
+const POP_MIN_GAP = 2.5;
+/** Keep some floaters free for drop feedback. */
+const POP_RESERVE = 8;
+
+class Rolling {
+  private value = Number.NaN;
+  private shown = '';
+
+  constructor(
+    private readonly el: HTMLElement,
+    private readonly format: (n: number) => string = formatNumber,
+  ) {}
+
+  update(target: number, dt: number): void {
+    if (!Number.isFinite(this.value)) this.value = target;
+    const d = target - this.value;
+    this.value = Math.abs(d) <= Math.max(0.01, Math.abs(target) * 1e-4) ? target : this.value + d * (1 - Math.exp(-12 * dt));
+    const s = this.format(this.value);
+    if (s !== this.shown) {
+      this.el.textContent = s;
+      this.shown = s;
+    }
+  }
+}
+
+export class Hud {
+  private readonly resPill: HTMLElement;
+  private readonly shardPill: HTMLElement;
+  private readonly res: Rolling;
+  private readonly rate: Rolling;
+  private readonly shards: Rolling;
+  private readonly harmonyPill: HTMLElement;
+  private readonly harmonyValue: HTMLElement;
+  private readonly harmonyFill: HTMLElement;
+  private readonly harmonyBar: HTMLElement;
+  private readonly typeSlots = new Map<StructureId, HTMLElement>();
+  private readonly eraBadge: HTMLElement;
+  private readonly cost: { el: HTMLElement; value: HTMLElement; preview: HTMLElement; meter: HTMLElement };
+  private readonly ascend: AscendButton;
+  private readonly floaters: Floaters;
+  private readonly burst: DiscoveryBurst;
+
+  private last = { harmony: -1, cap: -1, types: '', era: -1 as number, costKey: '', previewKey: '' };
+  private popClock = 0;
+  private popCursor = 0;
+  private readonly earned: Float64Array;
+  private readonly sincePop: Float64Array;
+  private readonly anchor = new Vector3();
+  private readonly anchorB = new Vector3();
+  private readonly screen = { x: 0, y: 0 };
+
+  constructor(
+    private readonly game: Game,
+    root: HTMLElement,
+  ) {
+    const top = document.createElement('div');
+    top.className = 'hud-top';
+    top.innerHTML = `
+      <div class="pill res">
+        <div class="res-main" data-tip="Resonance">
+          <span class="res-orb">${ICONS.resonance}</span><span class="res-value">0</span>
+        </div>
+        <div class="res-rate" data-tip="Resonance per second">${ICONS.rate}<span class="rate-value">0</span><small>/s</small></div>
+      </div>
+      <div class="pill harmony">
+        <div class="harmony-head" data-tip="Harmony · multiplies income">
+          ${ICONS.harmony}<span class="harmony-value">×1.0</span>
+        </div>
+        <div class="harmony-bar"><div class="harmony-fill"></div></div>
+        <div class="types">
+          ${HARMONY_TYPES.map(
+            (t) => `<span class="type" data-type="${t}" data-tip="${STRUCTURE_NAMES[t]}">${STRUCTURE_ICONS[t]}</span>`,
+          ).join('')}
+        </div>
+      </div>
+      <div class="hud-meta">
+        <div class="pill shards" data-tip="Aether Shards">${ICONS.shard}<span class="shard-value">0</span></div>
+        <div class="era-badge" data-tip=""><span>I</span></div>
+      </div>`;
+    root.appendChild(top);
+
+    const cost = document.createElement('div');
+    cost.className = 'cost-chip';
+    cost.innerHTML = `${ICONS.block}<span class="cost-value"></span><span class="cost-sep"></span><span class="cost-preview"></span><span class="cost-meter"><i></i></span>`;
+    root.appendChild(cost);
+
+    const q = <T extends HTMLElement>(sel: string, from: ParentNode = top) => from.querySelector<T>(sel)!;
+    this.resPill = q('.res');
+    this.res = new Rolling(q('.res-value'));
+    this.rate = new Rolling(q('.rate-value'));
+    this.shards = new Rolling(q('.shard-value'));
+    this.shardPill = q('.shards');
+    this.harmonyPill = q('.harmony');
+    this.harmonyValue = q('.harmony-value');
+    this.harmonyFill = q('.harmony-fill');
+    this.harmonyBar = q('.harmony-bar');
+    this.eraBadge = q('.era-badge');
+    for (const el of top.querySelectorAll<HTMLElement>('.type')) this.typeSlots.set(el.dataset.type as StructureId, el);
+    this.cost = {
+      el: cost,
+      value: q('.cost-value', cost),
+      preview: q('.cost-preview', cost),
+      meter: q('.cost-meter i', cost),
+    };
+
+    this.ascend = new AscendButton(root, (held) => game.setHold('button', held));
+    this.floaters = new Floaters(root, (v, out) => game.project(v, out));
+    this.burst = new DiscoveryBurst(
+      root,
+      (s) => this.typeSlots.get(s) ?? null,
+      (s) => restartClass(this.typeSlots.get(s), 'landed'),
+    );
+
+    const n = game.grid.columnCount;
+    this.earned = new Float64Array(n);
+    this.sincePop = new Float64Array(n).fill(POP_MIN_GAP);
+    this.listen();
+  }
+
+  update(dt: number): void {
+    const { grid, state } = this.game;
+    const { run, meta } = state;
+    const ev = run.evaluation;
+    const era = run.island.era;
+
+    this.res.update(run.resonance, dt);
+    this.rate.update(ev.income, dt);
+    this.shards.update(meta.shards, dt);
+
+    const cap = grid.k.K_HARMONY_CAP[era];
+    if (ev.harmony !== this.last.harmony || cap !== this.last.cap) this.renderHarmony(ev.harmony, cap);
+    const types = ev.typesPresent.join();
+    if (types !== this.last.types || era !== this.last.era) this.renderTypes(ev.typesPresent, era as EraIndex);
+    if (era !== this.last.era) this.renderEra(era as EraIndex);
+    this.last.types = types;
+    this.last.era = era;
+
+    this.renderCost();
+
+    const threshold = ascendThreshold(grid, run.island);
+    this.ascend.render(
+      totalBlocks(run.island) / threshold,
+      canAscend(grid, run),
+      this.game.ascendProgress,
+      shardsOnAscend(grid, run),
+    );
+
+    this.ambientPops(dt);
+    this.floaters.update(dt);
+  }
+
+  private listen(): void {
+    const { events, grid } = this.game;
+    const { k } = grid;
+
+    events.on('drop', ({ column, cost, outcome, incomeBefore }) => {
+      const gain = outcome.evaluation.income - incomeBefore;
+      if (gain > 1e-6) {
+        this.floaters.at(
+          this.game.columnAnchor(column, this.anchor),
+          { key: `gain:${column}`, value: gain, format: (v) => `+${formatNumber(v)}<small>/s</small>` },
+          'gain',
+        );
+      }
+      // Beside the Resonance pill, so it never sits on the number itself.
+      // Floaters center on x, so leave room for half a label.
+      const r = this.resPill.getBoundingClientRect();
+      this.floaters.atScreen(
+        r.right + 34,
+        r.top + r.height * 0.75,
+        { key: 'spend', value: cost, format: (v) => `-${formatNumber(v)}` },
+        'bad',
+      );
+
+      for (const t of outcome.newTypes) this.burst.show(t);
+      for (const c of outcome.goldenRolled) {
+        this.floaters.at(this.game.columnAnchor(c, this.anchor), `${ICONS.golden}×${k.K_M_GOLDEN}`, 'tag');
+      }
+      for (const e of outcome.newBridges) {
+        const edge = grid.edges[e];
+        this.game.columnAnchor(edge.a, this.anchor);
+        this.game.columnAnchor(edge.b, this.anchorB);
+        this.anchor.lerp(this.anchorB, 0.5);
+        this.floaters.at(this.anchor, `${ICONS.bridge}+${Math.round(k.K_M_BRIDGE * 100)}%`, 'tag');
+      }
+      if (!outcome.newTypes.includes('ST_PLAZA')) {
+        for (const group of outcome.newPlazas) {
+          this.anchor.set(0, 0, 0);
+          for (const c of group) this.anchor.add(this.game.columnAnchor(c, this.anchorB));
+          this.floaters.at(this.anchor.divideScalar(group.length), STRUCTURE_ICONS.ST_PLAZA, 'tag');
+        }
+      }
+      if (!outcome.newTypes.includes('ST_LIGHTHOUSE')) {
+        for (const c of outcome.newLighthouses) {
+          this.floaters.at(this.game.columnAnchor(c, this.anchor), STRUCTURE_ICONS.ST_LIGHTHOUSE, 'tag');
+        }
+      }
+    });
+
+    events.on('reject', ({ reason }) => {
+      if (reason === 'CANT_AFFORD') {
+        restartClass(this.cost.el, 'shake');
+        return;
+      }
+      this.floaters.at(this.game.cursorAnchor(this.anchor), ICONS.lock, 'bad');
+    });
+
+    events.on('ascendBlocked', ({ remaining }) => this.ascend.showBlocked(remaining));
+
+    events.on('ascend', ({ shards }) => {
+      this.earned.fill(0);
+      this.sincePop.fill(POP_MIN_GAP);
+      restartClass(this.shardPill, 'pop');
+      const r = this.shardPill.getBoundingClientRect();
+      this.floaters.atScreen(r.left + r.width / 2, r.bottom + 34, `${ICONS.shard}+${formatNumber(shards)}`, 'tag');
+    });
+  }
+
+  private renderHarmony(h: number, cap: number): void {
+    this.last.harmony = h;
+    this.last.cap = cap;
+    this.harmonyValue.textContent = `×${(Math.floor(h * 10 + 1e-6) / 10).toFixed(1)}`;
+    const span = Math.max(1e-6, cap - 1);
+    this.harmonyFill.style.width = `${Math.min(100, ((h - 1) / span) * 100)}%`;
+    this.harmonyBar.style.setProperty('--tick', `${(this.game.grid.k.K_HARMONY_PER_TYPE / span) * 100}%`);
+    this.harmonyPill.classList.toggle('max', h >= cap - 1e-9);
+  }
+
+  private renderTypes(present: readonly StructureId[], era: EraIndex): void {
+    const { k } = this.game.grid;
+    const tallest = Math.max(...this.game.grid.caps[era]);
+    for (const [t, el] of this.typeSlots) {
+      const possible =
+        (t !== 'ST_TOWER' || tallest >= k.K_TOWER_MIN_HEIGHT) &&
+        (t !== 'ST_LIGHTHOUSE' || tallest >= k.K_LIGHTHOUSE_MIN_HEIGHT);
+      el.hidden = !possible;
+      el.classList.toggle('lit', present.includes(t));
+    }
+  }
+
+  private renderEra(era: EraIndex): void {
+    const preset = ERA_PRESETS[ERA_IDS[era]];
+    this.eraBadge.firstElementChild!.textContent = ROMAN[era];
+    this.eraBadge.dataset.tip = `Era ${ROMAN[era]} · ${preset.name}`;
+  }
+
+  private renderCost(): void {
+    const info = this.game.cursorInfo();
+    const el = this.cost.el;
+    if (!this.game.project(this.game.cursorAnchor(this.anchor), this.screen)) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    el.style.transform = `translate3d(${this.screen.x.toFixed(1)}px, ${this.screen.y.toFixed(1)}px, 0)`;
+
+    const costText = info.state === 'blocked' ? '' : formatNumber(info.cost);
+    const costKey = `${info.state}|${costText}`;
+    if (costKey !== this.last.costKey) {
+      this.last.costKey = costKey;
+      el.dataset.state = info.state;
+      this.cost.value.textContent = costText;
+    }
+
+    const p = info.preview;
+    const previewKey = p ? `${p.structure}|${p.newType}` : 'none';
+    if (previewKey !== this.last.previewKey) {
+      this.last.previewKey = previewKey;
+      this.cost.preview.innerHTML = p ? STRUCTURE_ICONS[p.structure] : ICONS.lock;
+      el.classList.toggle('fresh', !!p?.newType);
+    }
+
+    if (info.state === 'broke') {
+      const f = Math.min(1, this.game.state.run.resonance / info.cost);
+      this.cost.meter.style.transform = `scaleX(${f.toFixed(3)})`;
+    }
+  }
+
+  private ambientPops(dt: number): void {
+    const { grid, state } = this.game;
+    const { run, meta } = state;
+    const ev = run.evaluation;
+    const mult = ev.harmony * grid.k.K_ERA_YIELD_MULT[run.island.era] * bonusesFor(meta).incomeMult;
+    const n = grid.columnCount;
+    for (let c = 0; c < n; c++) {
+      const y = ev.columns[c].yield;
+      if (y > 0) this.earned[c] += y * mult * dt;
+      this.sincePop[c] += dt;
+    }
+
+    this.popClock += dt;
+    if (this.popClock < POP_SPACING || this.floaters.free <= POP_RESERVE) return;
+    this.popClock = 0;
+    for (let step = 0; step < n; step++) {
+      const c = (this.popCursor + step) % n;
+      if (ev.columns[c].yield <= 0 || this.sincePop[c] < POP_MIN_GAP || this.earned[c] <= 0) continue;
+      this.floaters.at(this.game.columnAnchor(c, this.anchor), `+${formatNumber(this.earned[c])}`, 'pop');
+      this.earned[c] = 0;
+      this.sincePop[c] = 0;
+      this.popCursor = c + 1;
+      return;
+    }
+  }
+}
+
+/** Re-trigger a CSS animation class. */
+function restartClass(el: HTMLElement | undefined, cls: string): void {
+  if (!el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}

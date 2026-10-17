@@ -187,6 +187,8 @@ export function dropBlock(
 }
 
 export interface DropPreview {
+  /** What the column resolves to after the drop. */
+  structure: StructureId;
   /** Drop would add a Harmony type not currently present on the island. */
   newType: boolean;
   newBridge: boolean;
@@ -205,6 +207,7 @@ export function previewDrop(
   const trial = cloneIsland(island);
   const out = dropBlock(grid, trial, c, { bonuses, random: () => 1 }, current);
   return {
+    structure: out.evaluation.columns[c].structure,
     newType: out.evaluation.typesPresent.some((t) => !current.typesPresent.includes(t)),
     newBridge: out.newBridges.length > 0,
     newLighthouse: out.newLighthouses.length > 0,

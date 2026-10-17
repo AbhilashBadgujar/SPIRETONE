@@ -4,7 +4,7 @@ import type { ColumnId } from '../sim/grid';
 // Gameplay events for HUD (Step 4) and juice/audio (Step 5) to react to.
 
 export interface GameEvents {
-  drop: { column: ColumnId; cost: number; outcome: DropOutcome };
+  drop: { column: ColumnId; cost: number; outcome: DropOutcome; incomeBefore: number };
   reject: { column: ColumnId; reason: DropRejection | 'CANT_AFFORD' };
   /** Ascend held below the fill threshold. */
   ascendBlocked: { remaining: number };

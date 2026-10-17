@@ -8,6 +8,16 @@ export type StructureId =
   | 'ST_LIGHTHOUSE'
   | 'ST_PLAZA';
 
+/** GDD §3 structure table, "Name" column. */
+export const STRUCTURE_NAMES: Readonly<Record<StructureId, string>> = {
+  ST_EMPTY: 'Empty',
+  ST_COTTAGE: 'Cottage',
+  ST_PIER: 'Pier',
+  ST_TOWER: 'Tower',
+  ST_LIGHTHOUSE: 'Lighthouse',
+  ST_PLAZA: 'Plaza',
+};
+
 /** Structure types that count toward Harmony's distinct-type term (GDD §5). */
 export const HARMONY_TYPES: readonly StructureId[] = [
   'ST_COTTAGE',

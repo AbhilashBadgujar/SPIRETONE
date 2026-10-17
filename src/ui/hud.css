@@ -1,30 +1,471 @@
 :root {
   --hud-ink: #ffffff;
   --hud-dim: rgba(255, 255, 255, 0.4);
+  --hud-faint: rgba(255, 255, 255, 0.24);
   --hud-track: rgba(255, 255, 255, 0.2);
-  --hud-glass: rgba(10, 22, 34, 0.55);
-  --hud-glass-edge: rgba(255, 255, 255, 0.22);
+  --hud-glass-top: rgba(22, 40, 58, 0.74);
+  --hud-glass-bottom: rgba(10, 22, 34, 0.74);
+  --hud-glass: rgba(10, 22, 34, 0.62);
+  --hud-glass-edge: rgba(255, 255, 255, 0.16);
   --hud-gold: #ffd25e;
   --hud-gold-deep: #e8902a;
+  --hud-mint: #7ef0cf;
+  --hud-violet: #c3b2ff;
+  --hud-danger: #ff6b6b;
   --hud-core: #16283a;
   --hud-core-hi: #3b5876;
   --hud-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  --hud-text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
   font-family: ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 .hud {
   position: fixed;
   inset: 0;
+  overflow: hidden;
+  color: var(--hud-ink);
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
+}
+
+.hud *,
+.hud *::before,
+.hud *::after {
+  box-sizing: border-box;
+}
+
+.hud svg {
+  display: block;
+  flex: none;
 }
 
 canvas {
   touch-action: none;
 }
 
-/* --- Ascend ------------------------------------------------------------ */
+/* --- Top bar ----------------------------------------------------------- */
+
+.hud-top {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  left: calc(12px + env(safe-area-inset-left));
+  right: calc(12px + env(safe-area-inset-right));
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 10px;
+  border: 1px solid var(--hud-glass-edge);
+  border-radius: 20px;
+  background: linear-gradient(180deg, var(--hud-glass-top), var(--hud-glass-bottom));
+  box-shadow: var(--hud-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: auto;
+  font-variant-numeric: tabular-nums;
+  text-shadow: var(--hud-text-shadow);
+}
+
+/* Resonance */
+
+.res {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 16px 8px 10px;
+}
+
+.res-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.res-orb {
+  color: var(--hud-gold);
+  filter: drop-shadow(0 0 6px rgba(255, 210, 94, 0.7));
+  animation: orb-breathe 2.4s ease-in-out infinite;
+}
+
+.res-orb svg {
+  width: 30px;
+  height: 30px;
+}
+
+.res-value {
+  min-width: 3ch;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.res-rate {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 38px;
+  color: var(--hud-gold);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.res-rate svg {
+  width: 11px;
+  height: 11px;
+}
+
+.res-rate small {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* Harmony */
+
+.harmony {
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 14px;
+}
+
+.harmony-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--hud-mint);
+}
+
+.harmony-head svg {
+  width: 20px;
+  height: 20px;
+}
+
+.harmony-value {
+  color: var(--hud-ink);
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.harmony-bar {
+  position: relative;
+  width: 148px;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+/* Ticks every K_HARMONY_PER_TYPE, set from JS as --tick. */
+.harmony-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--tick, 20%) - 1.5px), rgba(10, 22, 34, 0.55) 0 var(--tick, 20%));
+}
+
+.harmony-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #4fd6b0, var(--hud-mint));
+  box-shadow: 0 0 8px rgba(126, 240, 207, 0.6);
+  transition: width 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.harmony.max .harmony-fill {
+  background: linear-gradient(90deg, var(--hud-gold-deep), var(--hud-gold));
+  box-shadow: 0 0 10px rgba(255, 210, 94, 0.8);
+}
+
+.harmony.max .harmony-head {
+  color: var(--hud-gold);
+}
+
+.types {
+  display: flex;
+  gap: 6px;
+}
+
+.type {
+  color: var(--hud-faint);
+  transition: color 0.3s, filter 0.3s;
+}
+
+.type svg {
+  width: 22px;
+  height: 22px;
+}
+
+.type.lit {
+  color: var(--hud-ink);
+  filter: drop-shadow(0 0 4px rgba(126, 240, 207, 0.65));
+}
+
+.type.landed {
+  animation: slot-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+
+/* Shards + era */
+
+.hud-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shards {
+  padding: 8px 14px 8px 10px;
+  color: var(--hud-violet);
+}
+
+.shards svg {
+  width: 22px;
+  height: 22px;
+  filter: drop-shadow(0 0 5px rgba(195, 178, 255, 0.7));
+}
+
+.shard-value {
+  color: var(--hud-ink);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.shards.pop {
+  animation: slot-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+
+.era-badge {
+  pointer-events: auto;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+/* The hex lives on the inner span so clip-path doesn't also clip the tooltip. */
+.era-badge span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 42px;
+  clip-path: polygon(50% 0, 100% 22%, 100% 78%, 50% 100%, 0 78%, 0 22%);
+  background: linear-gradient(180deg, #ffe597, var(--hud-gold-deep));
+  color: #4a2a06;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+/* --- Cursor cost chip ---------------------------------------------------- */
+
+.cost-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -15px 0 0 16px;
+  padding: 4px 9px 4px 6px;
+  border: 1px solid var(--hud-glass-edge);
+  border-radius: 999px;
+  background: var(--hud-glass);
+  font-size: 15px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-shadow: var(--hud-text-shadow);
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.cost-chip > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cost-sep {
+  width: 0;
+  height: 0;
+  margin: 0 1px 0 3px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--hud-dim);
+}
+
+.cost-preview svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cost-chip.fresh .cost-preview {
+  color: var(--hud-gold);
+  filter: drop-shadow(0 0 4px rgba(255, 210, 94, 0.8));
+}
+
+.cost-meter {
+  display: none;
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+
+.cost-meter i {
+  display: block;
+  height: 100%;
+  background: var(--hud-gold);
+  transform-origin: left;
+}
+
+.cost-chip[data-state='broke'] {
+  color: #ffb3b3;
+}
+
+.cost-chip[data-state='broke'] .cost-meter {
+  display: block;
+}
+
+.cost-chip[data-state='blocked'] {
+  opacity: 0.6;
+}
+
+.cost-chip[data-state='blocked'] > svg,
+.cost-chip[data-state='blocked'] .cost-sep {
+  display: none;
+}
+
+.cost-chip.shake {
+  animation: chip-shake 0.36s;
+}
+
+/* --- Floaters ------------------------------------------------------------ */
+
+.floaters {
+  position: absolute;
+  inset: 0;
+}
+
+.floater {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3), 0 0 8px rgba(0, 0, 0, 0.25);
+  will-change: transform, opacity;
+}
+
+.floater svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+.floater small {
+  font-size: 0.7em;
+  opacity: 0.85;
+}
+
+.floater-pop {
+  font-size: 14px;
+  color: var(--hud-ink);
+}
+
+.floater-gain {
+  font-size: 22px;
+  color: var(--hud-gold);
+}
+
+.floater-tag {
+  padding: 3px 9px 3px 6px;
+  border-radius: 999px;
+  background: var(--hud-glass);
+  font-size: 16px;
+  color: var(--hud-ink);
+}
+
+.floater-tag svg {
+  color: var(--hud-gold);
+}
+
+.floater-bad {
+  font-size: 15px;
+  color: var(--hud-danger);
+}
+
+/* --- Discovery burst ----------------------------------------------------- */
+
+/* Sits in the open sky/sea band between the top bar and the island. */
+.burst {
+  position: absolute;
+  left: 50%;
+  top: 27%;
+  width: 0;
+  height: 0;
+}
+
+.burst-rays {
+  position: absolute;
+  left: -110px;
+  top: -110px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgba(255, 210, 94, 0.4) 0 10deg, transparent 10deg 30deg);
+  mask: radial-gradient(circle, #000 25%, transparent 70%);
+  -webkit-mask: radial-gradient(circle, #000 25%, transparent 70%);
+  opacity: 0;
+  animation: rays-spin 6s linear infinite;
+}
+
+.burst-badge {
+  position: absolute;
+  left: -46px;
+  top: -46px;
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--hud-ink);
+  background: radial-gradient(circle at 50% 30%, #ffe597, var(--hud-gold-deep));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), 0 0 0 4px rgba(255, 255, 255, 0.35);
+}
+
+.burst-badge svg {
+  width: 54px;
+  height: 54px;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.2));
+}
+
+.burst-name {
+  position: absolute;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--hud-glass);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+}
+
+/* --- Ascend -------------------------------------------------------------- */
 
 .ascend {
   position: absolute;
@@ -106,10 +547,11 @@ canvas {
   animation: hud-shake 0.36s;
 }
 
+/* Beside the button, not above it, so chips never cover the island. */
 .ascend-chip {
   position: absolute;
-  left: 50%;
-  bottom: 100%;
+  left: calc(100% + 8px);
+  top: 50%;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -119,11 +561,11 @@ canvas {
   color: var(--hud-ink);
   background: var(--hud-glass);
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   opacity: 0;
-  transform: translate(-50%, 6px);
+  transform: translate(-8px, -50%);
   transition: opacity 0.2s, transform 0.2s;
 }
 
@@ -134,7 +576,128 @@ canvas {
 
 .ascend-chip.show {
   opacity: 1;
-  transform: translate(-50%, -8px);
+  transform: translate(0, -50%);
+}
+
+.ascend-gain svg {
+  color: var(--hud-violet);
+  filter: drop-shadow(0 0 5px rgba(195, 178, 255, 0.7));
+}
+
+/* --- Tooltips (pointer devices only) --------------------------------------- */
+
+@media (hover: hover) {
+  [data-tip] {
+    position: relative;
+  }
+
+  [data-tip]:not([data-tip=''])::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 50%;
+    z-index: 5;
+    padding: 5px 9px;
+    border-radius: 8px;
+    background: rgba(8, 16, 26, 0.92);
+    color: var(--hud-ink);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-shadow: none;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translate(-50%, -4px);
+    transition: opacity 0.15s 0.25s, transform 0.15s 0.25s;
+    pointer-events: none;
+  }
+
+  [data-tip]:hover::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .era-badge[data-tip]::after,
+  .shards[data-tip]::after {
+    left: auto;
+    right: 0;
+    transform: translateY(-4px);
+  }
+
+  .era-badge[data-tip]:hover::after,
+  .shards[data-tip]:hover::after {
+    transform: none;
+  }
+}
+
+/* --- Small screens ------------------------------------------------------- */
+
+@media (max-width: 620px) {
+  .hud-top {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .harmony {
+    order: 3;
+    flex: 1 0 100%;
+    flex-direction: row;
+    justify-content: center;
+    gap: 10px;
+    padding: 6px 12px;
+  }
+
+  .harmony-bar {
+    width: 72px;
+  }
+
+  .res-value {
+    font-size: 24px;
+  }
+
+  .res-orb svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .res-rate {
+    margin-left: 32px;
+  }
+
+  .type svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* --- Keyframes ------------------------------------------------------------- */
+
+@keyframes orb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes slot-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.45);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes rays-spin {
+  to {
+    rotate: 360deg;
+  }
 }
 
 @keyframes ascend-pulse {
@@ -155,9 +718,22 @@ canvas {
   80% { transform: translateX(2px); }
 }
 
+@keyframes chip-shake {
+  0%, 100% { margin-left: 16px; }
+  20% { margin-left: 9px; }
+  40% { margin-left: 22px; }
+  60% { margin-left: 12px; }
+  80% { margin-left: 18px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .res-orb,
+  .burst-rays,
   .ascend.ready .ascend-core,
-  .ascend.shake {
+  .ascend.shake,
+  .cost-chip.shake,
+  .type.landed,
+  .shards.pop {
     animation: none;
   }
 }

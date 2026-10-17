@@ -130,10 +130,10 @@ describe('previewDrop (K_SMART_PAUSE)', () => {
     const snapshot = structuredClone(island);
     const p = (r: number, i: number) => previewDrop(grid, island, id(r, i), NO_BONUSES, ev);
 
-    expect(p(0, 1)).toEqual({ newType: false, newBridge: true, newLighthouse: false });
-    expect(p(0, 0)).toEqual({ newType: true, newBridge: false, newLighthouse: true });
-    expect(p(0, 8)).toEqual({ newType: false, newBridge: false, newLighthouse: false });
-    expect(p(2, 8)?.newType).toBe(true);
+    expect(p(0, 1)).toEqual({ structure: 'ST_TOWER', newType: false, newBridge: true, newLighthouse: false });
+    expect(p(0, 0)).toEqual({ structure: 'ST_LIGHTHOUSE', newType: true, newBridge: false, newLighthouse: true });
+    expect(p(0, 8)).toEqual({ structure: 'ST_COTTAGE', newType: false, newBridge: false, newLighthouse: false });
+    expect(p(2, 8)).toMatchObject({ structure: 'ST_PIER', newType: true });
     expect(island).toEqual(snapshot);
   });
 

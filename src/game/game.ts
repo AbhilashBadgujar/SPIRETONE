@@ -1,14 +1,14 @@
-import { Matrix4, Ray, Raycaster, Vector2 } from 'three';
+import { Matrix4, Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { ERA_PRESETS } from '../data/eras';
 import { ERA_IDS, type EraIndex } from '../data/ids';
 import { CursorView, type CursorState } from '../render/cursor-view';
 import { Gulls } from '../render/gulls';
 import { IslandView } from '../render/island-view';
-import { LAYOUT, columnAngle } from '../render/layout';
+import { LAYOUT, columnAngle, columnTopY, columnX, columnZ } from '../render/layout';
 import { Ocean } from '../render/ocean';
 import { Stage } from '../render/scene';
 import type { ColumnId, Grid } from '../sim/grid';
-import { ascendThreshold, isDroppable, previewDrop, totalBlocks } from '../sim/island';
+import { ascendThreshold, isDroppable, previewDrop, totalBlocks, type DropPreview } from '../sim/island';
 import {
   advance,
   ascend,
@@ -19,18 +19,28 @@ import {
   unlocksFor,
   type GameState,
 } from '../sim/run';
-import { AscendButton } from '../ui/ascend-button';
 import { OrbitCursor, moveSelection, type CursorContext } from './cursor';
 import { Emitter, type GameEvents } from './events';
 import { pickColumn } from './picking';
 
 // The playable client: owns the sim state, the scene and the two control
-// modes. Input (input.ts) calls in; HUD and juice listen on `events`.
+// modes. Input (input.ts) calls in; the HUD reads state and listens on `events`.
 
 export type ControlMode = 'orbit' | 'direct';
 export type HoldSource = 'key' | 'pad' | 'button';
 
+export interface CursorInfo {
+  column: ColumnId;
+  state: CursorState;
+  cost: number;
+  /** What a drop here would do; null when the column is blocked. */
+  preview: DropPreview | null;
+}
+
 const FACE_TURN = 6;
+/** Headroom above a column top for HUD anchors, clear of roofs and lamps. */
+const ANCHOR_HEADROOM = 0.9;
+const _v = new Vector3();
 
 export class Game {
   readonly events = new Emitter<GameEvents>();
@@ -40,7 +50,6 @@ export class Game {
   private readonly cursorView: CursorView;
   private readonly ocean = new Ocean();
   private readonly gulls = new Gulls();
-  private readonly ascendButton: AscendButton;
   private readonly orbit: OrbitCursor;
 
   private readonly raycaster = new Raycaster();
@@ -57,17 +66,20 @@ export class Game {
   /** After an Ascend, the hold must be released before another can start. */
   private holdLatched = false;
   private holdBlockedShown = false;
-  /** Bumped whenever the island changes, to invalidate the smart-hint cache. */
+  /** Bumped whenever the island changes, to invalidate the preview cache. */
   private version = 0;
-  private smartCache = { column: -1, version: -1, smart: false };
+  private previewCache: { column: ColumnId; version: number; preview: DropPreview | null } = {
+    column: -1,
+    version: -1,
+    preview: null,
+  };
   private era: EraIndex;
   private time = 0;
 
   constructor(
-    private readonly grid: Grid,
+    readonly grid: Grid,
     readonly state: GameState,
     container: HTMLElement,
-    hud: HTMLElement,
     mode: ControlMode,
   ) {
     this.stage = new Stage(container);
@@ -76,7 +88,6 @@ export class Game {
     this.orbit = new OrbitCursor(grid);
     this.stage.scene.add(this.ocean.water, this.gulls.mesh);
     this.stage.turntable.add(this.view.root, this.cursorView.root);
-    this.ascendButton = new AscendButton(hud, (held) => this.setHold('button', held));
 
     this.era = state.run.island.era;
     this.applyEra();
@@ -94,9 +105,40 @@ export class Game {
     return this.mode === 'orbit' ? this.orbit.column : this.selected;
   }
 
-  /** 0..1 progress of the Ascend hold, for rumble. */
+  /** 0..1 progress of the Ascend hold. */
   get ascendProgress(): number {
     return this.holdTime / this.grid.k.K_ASCEND_HOLD;
+  }
+
+  cursorInfo(): CursorInfo {
+    const c = this.column;
+    return {
+      column: c,
+      state: this.cursorState(c),
+      cost: currentCost(this.grid, this.state.run),
+      preview: this.previewAt(c),
+    };
+  }
+
+  /** Turntable-space point just above column c, for floating HUD labels. */
+  columnAnchor(c: ColumnId, out: Vector3): Vector3 {
+    const { island } = this.state.run;
+    const top = island.inPlaza[c] ? LAYOUT.groundY + LAYOUT.plazaHeight : columnTopY(island.heights[c]);
+    return out.set(columnX(this.grid, c), top + ANCHOR_HEADROOM, columnZ(this.grid, c));
+  }
+
+  cursorAnchor(out: Vector3): Vector3 {
+    return this.cursorView.anchor(out);
+  }
+
+  /** Turntable-space point to CSS pixels. Returns false when behind the camera. */
+  project(local: Vector3, out: { x: number; y: number }): boolean {
+    _v.copy(local).applyMatrix4(this.stage.turntable.matrixWorld).project(this.stage.camera);
+    if (_v.z > 1) return false;
+    const canvas = this.stage.renderer.domElement;
+    out.x = ((_v.x + 1) / 2) * canvas.clientWidth;
+    out.y = ((1 - _v.y) / 2) * canvas.clientHeight;
+    return true;
   }
 
   setMode(mode: ControlMode): void {
@@ -108,6 +150,7 @@ export class Game {
   }
 
   drop(c: ColumnId = this.column): void {
+    const incomeBefore = this.state.run.evaluation.income;
     const attempt = tryDrop(this.grid, this.state, c);
     if (!attempt.ok) {
       if (c === this.column) this.cursorView.shake();
@@ -116,7 +159,7 @@ export class Game {
     }
     this.cursorView.pop();
     this.refreshIsland();
-    this.events.emit('drop', { column: c, cost: attempt.cost, outcome: attempt.outcome });
+    this.events.emit('drop', { column: c, cost: attempt.cost, outcome: attempt.outcome, incomeBefore });
   }
 
   select(c: ColumnId, source: 'pointer' | 'keys'): void {
@@ -154,14 +197,10 @@ export class Game {
     this.updateTurntable(dt);
 
     const c = this.column;
-    this.cursorView.setTarget(c, this.state.run.island, this.cursorState(c), this.smartAt(c));
+    this.cursorView.setTarget(c, this.state.run.island, this.cursorState(c), isSmart(this.previewAt(c)));
     this.cursorView.update(dt, this.time);
     this.ocean.update(this.time);
     this.gulls.update(this.time);
-
-    const { island } = this.state.run;
-    const threshold = ascendThreshold(this.grid, island);
-    this.ascendButton.render(totalBlocks(island) / threshold, canAscend(this.grid, this.state.run), this.ascendProgress);
 
     this.stage.update(dt);
     this.stage.render();
@@ -181,7 +220,6 @@ export class Game {
       if (!this.holdBlockedShown) {
         this.holdBlockedShown = true;
         const remaining = ascendThreshold(this.grid, run.island) - totalBlocks(run.island);
-        this.ascendButton.showBlocked(remaining);
         this.events.emit('ascendBlocked', { remaining });
       }
       return;
@@ -223,17 +261,16 @@ export class Game {
     return run.resonance >= currentCost(this.grid, run) ? 'ready' : 'broke';
   }
 
-  /** Would a drop here add something new (the smart-pause test)? Cached per island version. */
-  private smartAt(c: ColumnId): boolean {
-    const cache = this.smartCache;
+  /** previewDrop for c, cached per island version. */
+  private previewAt(c: ColumnId): DropPreview | null {
+    const cache = this.previewCache;
     if (cache.column !== c || cache.version !== this.version) {
       const { run } = this.state;
-      const p = previewDrop(this.grid, run.island, c, bonusesFor(this.state.meta), run.evaluation);
       cache.column = c;
       cache.version = this.version;
-      cache.smart = p !== null && (p.newType || p.newBridge || p.newLighthouse);
+      cache.preview = previewDrop(this.grid, run.island, c, bonusesFor(this.state.meta), run.evaluation);
     }
-    return cache.smart;
+    return cache.preview;
   }
 
   private cursorContext(): CursorContext {
@@ -258,6 +295,11 @@ export class Game {
     this.ocean.applyPreset(preset);
     this.view.applyPreset(preset);
   }
+}
+
+/** The smart-pause test: would this drop add something new? */
+function isSmart(p: DropPreview | null): boolean {
+  return p !== null && (p.newType || p.newBridge || p.newLighthouse);
 }
 
 function wrapAngle(a: number): number {

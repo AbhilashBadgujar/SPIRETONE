@@ -7,6 +7,7 @@ import { createPerfOverlay } from './lib/perf';
 import { evaluate } from './sim/evaluate';
 import { buildGrid } from './sim/grid';
 import { bonusesFor, newGame } from './sim/run';
+import { Hud } from './ui/hud';
 import './ui/hud.css';
 
 const grid = buildGrid(DEFAULT_CONSTANTS);
@@ -25,7 +26,8 @@ if (demo >= 1 && demo <= 4) {
 // Orbit is the default (GDD §4); ?mode=direct until the settings screen exists.
 const mode = params.get('mode') === 'direct' ? 'direct' : 'orbit';
 
-const game = new Game(grid, state, document.getElementById('app')!, document.getElementById('hud')!, mode);
+const game = new Game(grid, state, document.getElementById('app')!, mode);
+const hud = new Hud(game, document.getElementById('hud')!);
 const input = new Input(game, game.stage.renderer.domElement);
 const perf = params.has('perf') ? createPerfOverlay(game.stage.renderer, document.body) : null;
 
@@ -36,7 +38,8 @@ game.stage.renderer.setAnimationLoop((now) => {
   last = now;
   input.poll(dt);
   game.update(dt);
+  hud.update(dt);
   perf?.(dt);
 });
 
-if (import.meta.env.DEV) Object.assign(window, { spiretone: { grid, state, game } });
+if (import.meta.env.DEV) Object.assign(window, { spiretone: { grid, state, game, hud } });

@@ -8,6 +8,7 @@ import {
   LineSegments,
   Mesh,
   MeshBasicMaterial,
+  Vector3,
 } from 'three';
 import type { ColumnId, Grid } from '../sim/grid';
 import type { Island } from '../sim/island';
@@ -84,6 +85,15 @@ export class CursorView {
       this.y = this.target.y;
       this.snapped = true;
     }
+  }
+
+  /** Turntable-space position of the floating marker, for HUD chips. */
+  anchor(out: Vector3): Vector3 {
+    return out.set(
+      Math.sin(this.angle) * this.radius,
+      this.y + this.marker.position.y,
+      Math.cos(this.angle) * this.radius,
+    );
   }
 
   /** Rejected drop: wobble and flash. */

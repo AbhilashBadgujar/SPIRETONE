@@ -1,8 +1,10 @@
+import { formatNumber } from '../lib/format';
 import { ICONS } from './icons';
 
 // Hold-to-Ascend button (GDD §4). Outer ring: island fill toward the Ascend
 // threshold. Inner gold ring: hold progress. Holding too early shakes and
-// shows how many blocks are still needed.
+// shows how many blocks are still needed; once ready, a chip shows the
+// Shards an Ascend would pay.
 
 const R_FILL = 44;
 const R_HOLD = 35;
@@ -16,8 +18,10 @@ export class AscendButton {
   private readonly holdArc: SVGCircleElement;
   private readonly chip: HTMLDivElement;
   private readonly chipCount: HTMLSpanElement;
+  private readonly gain: HTMLDivElement;
+  private readonly gainCount: HTMLSpanElement;
   private chipTimer = 0;
-  private last = { fill: -1, hold: -1, ready: false };
+  private last = { fill: -1, hold: -1, ready: false, shards: '' };
 
   constructor(parent: HTMLElement, onHold: (held: boolean) => void) {
     const el = document.createElement('div');
@@ -31,13 +35,16 @@ export class AscendButton {
         <circle class="hold" cx="50" cy="50" r="${R_HOLD}" stroke-dasharray="${C_HOLD}" stroke-dashoffset="${C_HOLD}"/>
       </svg>
       <div class="ascend-core">${ICONS.ascend}</div>
-      <div class="ascend-chip">${ICONS.block}<span></span></div>`;
+      <div class="ascend-chip">${ICONS.block}<span></span></div>
+      <div class="ascend-chip ascend-gain" data-tip="Aether Shards on Ascend">${ICONS.shard}<span></span></div>`;
     parent.appendChild(el);
     this.el = el;
     this.fillArc = el.querySelector('.fill')!;
     this.holdArc = el.querySelector('.hold')!;
     this.chip = el.querySelector('.ascend-chip')!;
     this.chipCount = this.chip.querySelector('span')!;
+    this.gain = el.querySelector('.ascend-gain')!;
+    this.gainCount = this.gain.querySelector('span')!;
 
     el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -51,19 +58,25 @@ export class AscendButton {
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
-  /** fill: island fill / threshold (clamped to 1). hold: 0..1 of K_ASCEND_HOLD. */
-  render(fill: number, ready: boolean, hold: number): void {
+  /**
+   * fill: island fill / threshold (clamped to 1). hold: 0..1 of K_ASCEND_HOLD.
+   * shards: what an Ascend would pay right now.
+   */
+  render(fill: number, ready: boolean, hold: number, shards: number): void {
     const f = Math.round(Math.min(1, fill) * 200) / 200;
     const h = Math.round(hold * 200) / 200;
+    const s = `+${formatNumber(shards)}`;
     if (f !== this.last.fill) this.fillArc.setAttribute('stroke-dashoffset', String(C_FILL * (1 - f)));
     if (h !== this.last.hold) this.holdArc.setAttribute('stroke-dashoffset', String(C_HOLD * (1 - h)));
     if (ready !== this.last.ready) {
       this.el.classList.toggle('ready', ready);
+      this.gain.classList.toggle('show', ready);
       // A "blocks to go" count is stale the moment the island qualifies.
       if (ready) this.chip.classList.remove('show');
     }
+    if (s !== this.last.shards) this.gainCount.textContent = s;
     this.el.classList.toggle('holding', h > 0);
-    this.last = { fill: f, hold: h, ready };
+    this.last = { fill: f, hold: h, ready, shards: s };
   }
 
   showBlocked(remaining: number): void {
