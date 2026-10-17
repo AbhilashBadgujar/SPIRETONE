@@ -1,10 +1,14 @@
+import type { TreeControls } from '../ui/tree-screen';
 import type { Game } from './game';
 
-// Keyboard, mouse/touch and gamepad bindings (GDD §4 controls table).
+// Keyboard, mouse/touch and gamepad bindings (GDD §4 controls table, §10).
 //
-//   Drop     Space / left click / tap / pad A
+//   Drop     Space / left click / tap / pad A; held repeats once NODE_O3 is owned
 //   Ascend   hold Q / hold pad B / hold the on-screen button
 //   Select   (Direct mode) mouse hover, tap, A D W S or arrows, left stick / d-pad
+//   Tree     Tab / pad View / the tree button. Inside: move with the same keys,
+//            stick or d-pad; buy with Space, Enter or pad A; close with Tab,
+//            Esc, pad B or pad View
 //   Pause    Esc / pad Menu; resume with Space, Enter, pad A or a tap
 
 const MOVE_KEYS: Record<string, readonly [number, number]> = {
@@ -29,11 +33,17 @@ const PAD_UP = 12;
 const PAD_DOWN = 13;
 const PAD_LEFT = 14;
 const PAD_RIGHT = 15;
+/** View / Back / Select. */
+const PAD_VIEW = 8;
 /** Menu / Start. */
 const PAD_START = 9;
 
 export class Input {
   private padA = false;
+  private padB = false;
+  /** B closed the tree; ignore it until released, so it doesn't start an Ascend hold. */
+  private padBLatched = false;
+  private padView = false;
   private padStart = false;
   private padDir = '';
   private padRepeat = 0;
@@ -44,6 +54,7 @@ export class Input {
   constructor(
     private readonly game: Game,
     canvas: HTMLCanvasElement,
+    private readonly tree: TreeControls,
   ) {
     window.addEventListener('keydown', (e) => this.onKey(e, true));
     window.addEventListener('keyup', (e) => this.onKey(e, false));
@@ -51,6 +62,9 @@ export class Input {
     window.addEventListener('blur', () => {
       this.game.setHold('key', false);
       this.game.setHold('pad', false);
+      this.game.setDropHeld('key', false);
+      this.game.setDropHeld('pointer', false);
+      this.game.setDropHeld('pad', false);
     });
     // GDD §4 cert behavior: pause when the controller in use disconnects.
     window.addEventListener('gamepaddisconnected', (e) => {
@@ -68,13 +82,19 @@ export class Input {
       if (e.button !== 0) return;
       if (this.game.controlMode === 'orbit') {
         this.game.drop();
+        this.game.setDropHeld('pointer', true);
         return;
       }
       const c = this.game.pick(e.clientX, e.clientY);
       if (c === null) return;
       this.game.select(c, 'pointer');
       this.game.drop(c);
+      this.game.setDropHeld('pointer', true);
     });
+    const release = () => this.game.setDropHeld('pointer', false);
+    canvas.addEventListener('pointerup', release);
+    canvas.addEventListener('pointercancel', release);
+    canvas.addEventListener('pointerleave', release);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
@@ -88,26 +108,62 @@ export class Input {
     }
 
     if (pad.buttons.some((b) => b.pressed)) this.padInUse = pad.index;
-
-    const start = pressed(pad, PAD_START);
-    if (start && !this.padStart) this.game.setPaused(!this.game.isPaused);
-    this.padStart = start;
-
     const a = pressed(pad, PAD_A);
-    if (a && !this.padA) {
-      if (this.game.isPaused) this.game.setPaused(false);
-      else this.game.drop();
-    }
+    const b = pressed(pad, PAD_B);
+    const view = pressed(pad, PAD_VIEW);
+    const start = pressed(pad, PAD_START);
+    const aDown = a && !this.padA;
+    const bDown = b && !this.padB;
+    const viewDown = view && !this.padView;
+    const startDown = start && !this.padStart;
+    if (!a && this.padA) this.game.setDropHeld('pad', false);
     this.padA = a;
-    this.game.setHold('pad', pressed(pad, PAD_B));
+    this.padB = b;
+    this.padView = view;
+    this.padStart = start;
+    if (!b) this.padBLatched = false;
 
-    if (this.game.controlMode === 'direct') this.pollMove(pad, dt);
+    if (this.tree.isOpen) {
+      this.game.setHold('pad', false);
+      if (bDown || viewDown || startDown) {
+        this.tree.close();
+        this.padBLatched = b;
+      } else if (aDown) {
+        this.tree.confirm();
+      }
+      this.pollMove(pad, dt, (dx, dy) => this.tree.move(dx, dy));
+      return;
+    }
+
+    if (startDown) this.game.setPaused(!this.game.isPaused);
+    if (viewDown && !this.game.isPaused) this.tree.open();
+    if (aDown) {
+      if (this.game.isPaused) {
+        this.game.setPaused(false);
+      } else {
+        this.game.drop();
+        this.game.setDropHeld('pad', true);
+      }
+    }
+    this.game.setHold('pad', b && !this.padBLatched);
+
+    if (this.game.controlMode === 'direct') this.pollMove(pad, dt, (dx, dy) => this.game.move(dx, dy));
     this.rumble(pad, dt);
   }
 
   private onKey(e: KeyboardEvent, down: boolean): void {
+    if (this.tree.isOpen) {
+      this.treeKey(e, down);
+      return;
+    }
     if (e.code === 'Escape') {
       if (down && !e.repeat) this.game.setPaused(!this.game.isPaused);
+      return;
+    }
+    if (e.code === 'Tab') {
+      // Never let Tab walk focus through the page.
+      e.preventDefault();
+      if (down && !e.repeat && !this.game.isPaused) this.tree.open();
       return;
     }
     if (this.game.isPaused) {
@@ -120,7 +176,9 @@ export class Input {
     }
     if (e.code === 'Space') {
       e.preventDefault();
-      if (down && !e.repeat) this.game.drop();
+      if (e.repeat) return;
+      if (down) this.game.drop();
+      this.game.setDropHeld('key', down);
       return;
     }
     if (e.code === 'KeyQ') {
@@ -134,7 +192,23 @@ export class Input {
     }
   }
 
-  private pollMove(pad: Gamepad, dt: number): void {
+  private treeKey(e: KeyboardEvent, down: boolean): void {
+    if (e.code === 'Tab' || e.code === 'Space' || e.code === 'Enter' || MOVE_KEYS[e.code]) e.preventDefault();
+    if (!down) return;
+    if (e.code === 'Tab' || e.code === 'Escape') {
+      if (!e.repeat) this.tree.close();
+      return;
+    }
+    if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat) {
+      this.tree.confirm();
+      return;
+    }
+    const move = MOVE_KEYS[e.code];
+    if (move) this.tree.move(move[0], move[1]);
+  }
+
+  /** Stick and d-pad as discrete steps with key-style repeat. */
+  private pollMove(pad: Gamepad, dt: number, step: (dx: number, dy: number) => void): void {
     const x = pad.axes[0] ?? 0;
     const y = pad.axes[1] ?? 0;
     let dIndex = 0;
@@ -154,13 +228,13 @@ export class Input {
     if (dir !== this.padDir) {
       this.padDir = dir;
       this.padRepeat = REPEAT_DELAY;
-      this.game.move(dIndex, dRing);
+      step(dIndex, dRing);
       return;
     }
     this.padRepeat -= dt;
     if (this.padRepeat <= 0) {
       this.padRepeat = REPEAT_RATE;
-      this.game.move(dIndex, dRing);
+      step(dIndex, dRing);
     }
   }
 

@@ -41,7 +41,7 @@ const mode = params.get('mode') === 'direct' || hash === 'direct' ? 'direct' : '
 const game = new Game(grid, state, document.getElementById('app')!, mode);
 const sound = new Sound(game);
 const hud = new Hud(game, document.getElementById('hud')!, sound);
-const input = new Input(game, game.stage.renderer.domElement);
+const input = new Input(game, game.stage.renderer.domElement, hud.tree);
 const perf = params.has('perf') ? createPerfOverlay(game.stage.renderer, document.body) : null;
 
 if (!isDemo) {
@@ -53,6 +53,7 @@ if (!isDemo) {
   });
   window.addEventListener('pagehide', save);
   game.events.on('ascend', save);
+  game.events.on('buy', save);
 }
 
 let last = performance.now();

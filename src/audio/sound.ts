@@ -153,10 +153,26 @@ export class Sound {
       this.bonk(0);
       this.bonk(0.14);
     });
-    events.on('pause', () => void this.ctx?.suspend());
+    // The tree screen keeps sound on: buying has its own chords.
+    events.on('pause', ({ reason }) => {
+      if (reason === 'menu') {
+        void this.ctx?.suspend();
+        return;
+      }
+      const ctx = this.ctx;
+      if (ctx) this.arpeggio([4, 7], ctx.currentTime + 0.01, 0.06, 0.1);
+    });
     events.on('resume', () => {
       if (!document.hidden) void this.ctx?.resume();
     });
+    events.on('buy', () => {
+      const ctx = this.ctx;
+      if (!ctx) return;
+      // A chord rolled up, its root an octave down underneath.
+      this.arpeggio([0, 2, 4, 7, 9], ctx.currentTime + 0.01, 0.045, 0.2);
+      this.arpeggio([0], ctx.currentTime + 0.01, 0, 0.2, -12);
+    });
+    events.on('buyFail', () => this.bonk(0));
     events.on('ascendStart', () => this.whoosh(ASCENSION.rise));
     events.on('ascend', () => {
       const ctx = this.ctx;

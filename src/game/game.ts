@@ -1,6 +1,7 @@
 import { Matrix4, Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { ERA_PRESETS } from '../data/eras';
 import { ERA_IDS, type EraIndex } from '../data/ids';
+import type { NodeId } from '../data/tree';
 import { CursorView, type CursorState } from '../render/cursor-view';
 import { Gulls } from '../render/gulls';
 import { IslandView } from '../render/island-view';
@@ -8,7 +9,9 @@ import { Juice } from '../render/juice';
 import { LAYOUT, columnAngle, columnTopY, columnX, columnZ } from '../render/layout';
 import { Ocean } from '../render/ocean';
 import { Stage } from '../render/scene';
+import { evaluate } from '../sim/evaluate';
 import type { ColumnId, Grid } from '../sim/grid';
+import { advanceGulls } from '../sim/gulls';
 import { ascendThreshold, isDroppable, previewDrop, totalBlocks, type DropPreview } from '../sim/island';
 import {
   advance,
@@ -19,9 +22,10 @@ import {
   shardsOnAscend,
   tryDrop,
   unlocksFor,
+  type DropAttempt,
   type GameState,
 } from '../sim/run';
-import { effectsOf } from '../sim/tree';
+import { buyNode, effectsOf, type BuyRejection } from '../sim/tree';
 import { ASCENSION, ASCENSION_TOTAL, ascensionPose } from './ascension';
 import { OrbitCursor, moveSelection, type CursorContext } from './cursor';
 import { Emitter, type GameEvents } from './events';
@@ -32,6 +36,9 @@ import { pickColumn } from './picking';
 
 export type ControlMode = 'orbit' | 'direct';
 export type HoldSource = 'key' | 'pad' | 'button';
+export type DropSource = 'key' | 'pad' | 'pointer';
+/** 'menu' shows the pause veil; 'tree' freezes play behind the tree screen. */
+export type PauseReason = 'menu' | 'tree';
 
 export interface CursorInfo {
   column: ColumnId;
@@ -84,7 +91,10 @@ export class Game {
   private time = 0;
   /** Running Ascension sequence, or null. */
   private ascension: { t: number; shards: number; phase: 'rise' | 'descend' | 'settle' } | null = null;
-  private paused = false;
+  private pauseReason: PauseReason | null = null;
+  /** Drop inputs held down, for NODE_O3 rapid drop. */
+  private readonly dropHolds = new Set<DropSource>();
+  private rapidTimer = 0;
 
   constructor(
     readonly grid: Grid,
@@ -123,7 +133,11 @@ export class Game {
   }
 
   get isPaused(): boolean {
-    return this.paused;
+    return this.pauseReason !== null;
+  }
+
+  get pausedBy(): PauseReason | null {
+    return this.pauseReason;
   }
 
   get isAscending(): boolean {
@@ -136,12 +150,38 @@ export class Game {
   }
 
   /** Freezes the economy, cursor and turntable; ambient scenery keeps moving. */
-  setPaused(paused: boolean): void {
-    if (paused === this.paused) return;
-    this.paused = paused;
+  setPaused(paused: boolean, reason: PauseReason = 'menu'): void {
+    const next = paused ? reason : null;
+    if (next === this.pauseReason) return;
+    this.pauseReason = next;
     this.holds.clear();
+    this.dropHolds.clear();
     this.holdTime = 0;
-    this.events.emit(paused ? 'pause' : 'resume', {});
+    if (next) this.events.emit('pause', { reason: next });
+    else this.events.emit('resume', {});
+  }
+
+  /** Buys a tree node. Yield bonuses apply to this island at once; eras from the next. */
+  buy(id: NodeId): BuyRejection | null {
+    const rejection = buyNode(this.state.meta, id);
+    if (rejection) {
+      this.events.emit('buyFail', { id, reason: rejection });
+      return rejection;
+    }
+    const { run, meta } = this.state;
+    run.evaluation = evaluate(this.grid, run.island, bonusesFor(meta));
+    this.refreshIsland();
+    this.events.emit('buy', { id });
+    return null;
+  }
+
+  /** NODE_O3: while a Drop input stays held, drops repeat every K_RAPID_INTERVAL. */
+  setDropHeld(source: DropSource, held: boolean): void {
+    const wasHeld = this.dropHolds.size > 0;
+    if (held) this.dropHolds.add(source);
+    else this.dropHolds.delete(source);
+    // The press itself already dropped; the first repeat comes one interval later.
+    if (!wasHeld) this.rapidTimer = this.grid.k.K_RAPID_INTERVAL;
   }
 
   cursorInfo(): CursorInfo {
@@ -183,18 +223,25 @@ export class Game {
     this.mode = mode;
   }
 
-  drop(c: ColumnId = this.column): void {
-    if (this.paused || this.ascension) return;
+  /** `quiet`: a held repeat; a refused one passes silently instead of shaking. */
+  drop(c: ColumnId = this.column, quiet = false): void {
+    if (this.pauseReason || this.ascension) return;
     const incomeBefore = this.state.run.evaluation.income;
     const attempt = tryDrop(this.grid, this.state, c);
     if (!attempt.ok) {
+      if (quiet) return;
       if (c === this.column) this.cursorView.shake();
       this.events.emit('reject', { column: c, reason: attempt.reason });
       return;
     }
     this.cursorView.pop();
+    this.landed(c, attempt, incomeBefore, 'player');
+  }
+
+  /** Shared tail of player and Gull drops. */
+  private landed(c: ColumnId, attempt: Extract<DropAttempt, { ok: true }>, incomeBefore: number, by: 'player' | 'gull'): void {
     this.refreshIsland();
-    this.events.emit('drop', { column: c, cost: attempt.cost, outcome: attempt.outcome, incomeBefore });
+    this.events.emit('drop', { column: c, cost: attempt.cost, outcome: attempt.outcome, incomeBefore, by });
   }
 
   select(c: ColumnId, source: 'pointer' | 'keys'): void {
@@ -226,12 +273,14 @@ export class Game {
 
   update(dt: number): void {
     this.time += dt;
-    if (this.ascension && !this.paused) {
+    if (this.ascension && !this.pauseReason) {
       this.updateAscension(dt);
-    } else if (!this.paused) {
+    } else if (!this.pauseReason) {
       if (this.mode === 'orbit') this.orbit.update(dt, this.cursorContext());
       this.updateHold(dt);
+      this.updateRapidDrop(dt);
       advance(this.grid, this.state, dt);
+      for (const g of advanceGulls(this.grid, this.state, dt)) this.landed(g.column, g.attempt, g.incomeBefore, 'gull');
       this.updateTurntable(dt);
     }
 
@@ -270,6 +319,15 @@ export class Game {
       this.holdLatched = true;
       this.holdTime = 0;
       this.beginAscension();
+    }
+  }
+
+  private updateRapidDrop(dt: number): void {
+    if (this.dropHolds.size === 0 || !unlocksFor(this.state.meta).rapidDrop) return;
+    this.rapidTimer -= dt;
+    while (this.rapidTimer <= 0) {
+      this.rapidTimer += this.grid.k.K_RAPID_INTERVAL;
+      this.drop(this.column, true);
     }
   }
 

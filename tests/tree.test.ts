@@ -5,6 +5,7 @@ import { advanceGulls, gullTarget } from '../src/sim/gulls';
 import { ascend, bonusesFor, newGame, startIsland } from '../src/sim/run';
 import { deserialize, serialize } from '../src/sim/save';
 import { buyNode, buyRejection, effectsOf, nodeState } from '../src/sim/tree';
+import { stepFrom } from '../src/ui/tree-screen';
 import { grid, id, islandWith, k } from './helpers';
 
 const owner = (shards: number, nodes: NodeId[] = []) => ({ shards, nodes, highestEra: 0 as const });
@@ -30,9 +31,47 @@ describe('GDD §7 tree data', () => {
     expect(NODE_BY_ID.NODE_O5.effect.kind).toBe('orbitSkip');
   });
 
-  it('places every node at its own spot on the map', () => {
-    const spots = new Set(TREE.map((n) => n.pos.join(',')));
-    expect(spots.size).toBe(TREE.length);
+  it('keeps nodes, and the hub at (0, 0), at least 1.1 units apart on the map', () => {
+    const spots = [[0, 0], ...TREE.map((n) => n.pos)];
+    for (let i = 0; i < spots.length; i++) {
+      for (let j = i + 1; j < spots.length; j++) {
+        const d = Math.hypot(spots[i][0] - spots[j][0], spots[i][1] - spots[j][1]);
+        expect(d, `${spots[i]} vs ${spots[j]}`).toBeGreaterThanOrEqual(1.1);
+      }
+    }
+  });
+});
+
+describe('tree map navigation', () => {
+  it('steps along the spine and out to the branches', () => {
+    expect(stepFrom('NODE_C1', 0, -1)).toBe('NODE_C2');
+    expect(stepFrom('NODE_C2', 0, 1)).toBe('NODE_C1');
+    expect(stepFrom('NODE_Y1', -1, 0)).toBe('NODE_Y2');
+    expect(stepFrom('NODE_O1', 1, 0)).toBe('NODE_O2');
+  });
+
+  it('can reach every node from every other by steps', () => {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+    const reach = (from: NodeId) => {
+      const seen = new Set([from]);
+      const queue = [from];
+      while (queue.length) {
+        const id = queue.shift()!;
+        for (const [dx, dy] of dirs) {
+          const next = stepFrom(id, dx, dy);
+          if (next && !seen.has(next)) {
+            seen.add(next);
+            queue.push(next);
+          }
+        }
+      }
+      return seen.size;
+    };
+    for (const n of TREE) expect(reach(n.id), n.id).toBe(TREE.length);
+  });
+
+  it('stays put at the edge of the map', () => {
+    expect(stepFrom('NODE_L3', -1, 0)).toBeNull();
   });
 });
 

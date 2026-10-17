@@ -10,6 +10,8 @@ import { DiscoveryBurst } from './burst';
 import { Ceremony } from './ceremony';
 import { Floaters } from './floaters';
 import { ICONS, STRUCTURE_ICONS } from './icons';
+import { restartClass } from './restart-class';
+import { TreeScreen } from './tree-screen';
 
 // Icon-first HUD. Numbers and icons only; names live in hover tooltips.
 //
@@ -18,6 +20,7 @@ import { ICONS, STRUCTURE_ICONS } from './icons';
 //   top-right   Aether Shards + era badge
 //   cursor      cost chip with what the drop will become
 //   bottom      Ascend button (fill ring, hold ring, Shards preview)
+//   bottom-left upgrade tree button, dotted when a node is affordable
 
 const ROMAN = ['I', 'II', 'III', 'IV'];
 /** Seconds between ambient "+N" pops anywhere on the island. */
@@ -57,6 +60,7 @@ class Rolling {
 }
 
 export class Hud {
+  readonly tree: TreeScreen;
   private readonly resPill: HTMLElement;
   private readonly shardPill: HTMLElement;
   private readonly res: Rolling;
@@ -74,6 +78,8 @@ export class Hud {
   private readonly burst: DiscoveryBurst;
   private readonly ceremony: Ceremony;
   private readonly veil: HTMLDivElement;
+  private readonly treeBtn: HTMLButtonElement;
+  private treeKey = '';
   /** Shards already banked but still on the Ascension card, not yet in the counter. */
   private pendingShards = 0;
 
@@ -169,6 +175,18 @@ export class Hud {
 
     this.ceremony = new Ceremony(root, () => this.shardPill);
 
+    this.treeBtn = document.createElement('button');
+    this.treeBtn.type = 'button';
+    this.treeBtn.tabIndex = -1;
+    this.treeBtn.className = 'tree-btn';
+    this.treeBtn.dataset.tip = 'Upgrade tree';
+    this.treeBtn.setAttribute('aria-label', 'Upgrade tree');
+    this.treeBtn.innerHTML = `${ICONS.tree}<i class="tree-dot"></i>`;
+    this.treeBtn.addEventListener('pointerdown', (e) => e.preventDefault());
+    this.treeBtn.addEventListener('click', () => this.tree.open());
+    root.appendChild(this.treeBtn);
+    this.tree = new TreeScreen(game, root);
+
     // Pause veil: tap anywhere to resume.
     this.veil = document.createElement('div');
     this.veil.className = 'pause-veil';
@@ -217,6 +235,18 @@ export class Hud {
     if (!this.game.isAscending && !this.game.isPaused) this.ambientPops(dt);
     this.floaters.update(dt);
     this.ceremony.update(this.game.ascensionTime);
+    this.renderTreeButton();
+    this.tree.update();
+  }
+
+  private renderTreeButton(): void {
+    const { meta } = this.game.state;
+    // Shards still on the Ascension card don't count until they land.
+    const shards = meta.shards - this.pendingShards;
+    const key = `${shards}|${meta.nodes.length}`;
+    if (key === this.treeKey) return;
+    this.treeKey = key;
+    this.treeBtn.classList.toggle('affordable', this.tree.anyAffordable(shards));
   }
 
   private listen(): void {
@@ -299,10 +329,15 @@ export class Hud {
       void this.ceremony.end().then(() => {
         this.pendingShards = 0;
         restartClass(this.shardPill, 'pop');
+        // New Shards and something to spend them on: point at the tree.
+        if (this.tree.anyAffordable()) this.treeBtn.classList.add('beckon');
       });
     });
 
-    events.on('pause', () => (this.veil.hidden = false));
+    events.on('pause', ({ reason }) => {
+      this.veil.hidden = reason !== 'menu';
+      if (reason === 'tree') this.treeBtn.classList.remove('beckon');
+    });
     events.on('resume', () => (this.veil.hidden = true));
   }
 
@@ -391,12 +426,4 @@ export class Hud {
       return;
     }
   }
-}
-
-/** Re-trigger a CSS animation class. */
-function restartClass(el: HTMLElement | undefined, cls: string): void {
-  if (!el) return;
-  el.classList.remove(cls);
-  void el.offsetWidth;
-  el.classList.add(cls);
 }

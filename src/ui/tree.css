@@ -1,0 +1,663 @@
+/* --- Tree button (bottom left of the HUD) ------------------------------- */
+
+.hud .tree-btn {
+  position: absolute;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(32px + env(safe-area-inset-bottom));
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 1px solid var(--hud-glass-edge);
+  border-radius: 50%;
+  color: var(--hud-violet);
+  background: radial-gradient(circle at 50% 30%, var(--hud-core-hi), var(--hud-core));
+  box-shadow: var(--hud-shadow), inset 0 2px 0 rgba(255, 255, 255, 0.16);
+  font: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s, opacity 0.4s;
+}
+
+.tree-btn svg {
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 0 6px rgba(195, 178, 255, 0.6));
+}
+
+.tree-btn:active {
+  transform: scale(0.92);
+}
+
+.tree-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--hud-gold);
+  box-shadow: 0 0 0 3px var(--hud-core), 0 0 10px rgba(255, 210, 94, 0.9);
+  transform: scale(0);
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+
+.tree-btn.affordable .tree-dot {
+  transform: scale(1);
+}
+
+.tree-btn.beckon {
+  animation: tree-beckon 1.3s ease-in-out infinite;
+}
+
+.hud.ascending .tree-btn {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .hud .tree-btn[data-tip]::after {
+    top: auto;
+    bottom: calc(100% + 10px);
+    left: 0;
+    transform: translateY(4px);
+  }
+
+  .hud .tree-btn[data-tip]:hover::after {
+    transform: none;
+  }
+}
+
+/* --- Tree screen ------------------------------------------------------------ */
+
+.tree-screen {
+  --star: rgba(255, 255, 255, 0.75);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1.5px 1.5px at 12% 22%, var(--star), transparent),
+    radial-gradient(1px 1px at 27% 68%, var(--star), transparent),
+    radial-gradient(1.5px 1.5px at 41% 12%, var(--star), transparent),
+    radial-gradient(1px 1px at 58% 82%, var(--star), transparent),
+    radial-gradient(1.5px 1.5px at 73% 30%, var(--star), transparent),
+    radial-gradient(1px 1px at 86% 61%, var(--star), transparent),
+    radial-gradient(1px 1px at 93% 14%, var(--star), transparent),
+    radial-gradient(1px 1px at 6% 86%, var(--star), transparent),
+    radial-gradient(ellipse at 50% 42%, rgba(34, 46, 86, 0.88), rgba(6, 10, 24, 0.95));
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.tree-screen.opening {
+  animation: tree-in 0.28s ease-out;
+}
+
+.tree-screen [data-branch='core'] { --c: #c3b2ff; }
+.tree-screen [data-branch='luck'] { --c: #ffd25e; }
+.tree-screen [data-branch='yield'] { --c: #7ef0cf; }
+.tree-screen [data-branch='orbit'] { --c: #8fd3ff; }
+.tree-screen [data-branch='gulls'] { --c: #f4f1e8; }
+.tree-screen [data-branch='start'] { --c: #ff9f7a; }
+
+.tree-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 0 calc(12px + env(safe-area-inset-left));
+}
+
+.tree-close {
+  padding: 10px;
+  border-radius: 50%;
+  color: var(--hud-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tree-close svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tree-screen .shards.drain {
+  animation: shard-drain 0.45s ease-out;
+}
+
+/* Era hex, shared by core icons, gates and the hub. */
+.tree-screen .hex {
+  display: grid;
+  place-items: center;
+  clip-path: polygon(50% 0, 100% 22%, 100% 78%, 50% 100%, 0 78%, 0 22%);
+  background: linear-gradient(180deg, #ffe597, var(--hud-gold-deep));
+  color: #4a2a06;
+  font-weight: 900;
+  line-height: 1;
+}
+
+/* --- Map --- */
+
+.tree-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.tree-viewport:active {
+  cursor: grabbing;
+}
+
+.tree-map {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.tree-map.smooth {
+  transition: transform 0.25s ease-out;
+}
+
+/* Drawn in tree units: 1 unit = --unit px. */
+.tree-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.tree-edges line {
+  stroke: rgba(255, 255, 255, 0.13);
+  stroke-width: 0.045;
+  stroke-linecap: round;
+}
+
+.tree-edges line[data-state='open'] {
+  stroke: var(--c);
+  stroke-opacity: 0.75;
+  stroke-dasharray: 0.07 0.12;
+  animation: edge-flow 1s linear infinite;
+}
+
+.tree-edges line[data-state='lit'] {
+  stroke: var(--c);
+  stroke-width: 0.07;
+}
+
+.tree-hub {
+  position: absolute;
+  width: calc(var(--unit) * 0.68);
+  height: calc(var(--unit) * 0.76);
+  translate: -50% -50%;
+  filter: drop-shadow(0 0 14px rgba(255, 210, 94, 0.55));
+}
+
+.tree-hub span {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  clip-path: polygon(50% 0, 100% 22%, 100% 78%, 50% 100%, 0 78%, 0 22%);
+  background: linear-gradient(180deg, #ffe597, var(--hud-gold-deep));
+  color: #4a2a06;
+  font-size: calc(var(--unit) * 0.26);
+  font-weight: 900;
+}
+
+.tree-node {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: clamp(44px, calc(var(--unit) * 0.8), 64px);
+  height: clamp(44px, calc(var(--unit) * 0.8), 64px);
+  margin: 0;
+  padding: 0;
+  translate: -50% -50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.25);
+  background: radial-gradient(circle at 50% 30%, #22344a, #0e1a28);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: scale 0.15s, border-color 0.25s, color 0.25s;
+}
+
+.tree-node-icon {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.tree-node-icon svg {
+  width: 52%;
+  height: 52%;
+}
+
+.tree-node-icon .hex {
+  width: 52%;
+  height: 58%;
+  font-size: clamp(11px, calc(var(--unit) * 0.2), 16px);
+}
+
+.tree-node[data-state='locked'] .tree-node-icon .hex {
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.tree-node[data-state='short'] {
+  border-color: color-mix(in srgb, var(--c) 55%, transparent);
+  color: color-mix(in srgb, var(--c) 70%, transparent);
+}
+
+.tree-node[data-state='ready'] {
+  border-color: var(--c);
+  color: var(--c);
+  animation: node-ready 1.6s ease-in-out infinite;
+}
+
+.tree-node[data-state='owned'] {
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #0d1826;
+  background: radial-gradient(circle at 50% 30%, #ffffff, var(--c) 72%);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--c) 60%, transparent);
+}
+
+.tree-node.selected {
+  z-index: 2;
+  scale: 1.12;
+}
+
+.tree-node.selected::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border: 2.5px dashed rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  animation: sel-spin 8s linear infinite;
+  pointer-events: none;
+}
+
+.tree-gate {
+  display: none !important;
+  position: absolute;
+  top: -5px;
+  right: -7px;
+  width: 19px;
+  height: 21px;
+  font-size: 9px;
+}
+
+.tree-node.gated .tree-gate {
+  display: grid !important;
+}
+
+/* Quieter than a core node's hex: it marks a wait, not a thing to buy. */
+.tree-screen .tree-gate {
+  background: linear-gradient(180deg, #7a5f22, #4a3812);
+  color: var(--hud-gold);
+}
+
+.tree-cost {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px 1px 4px;
+  border-radius: 999px;
+  translate: -50% 0;
+  background: rgba(8, 16, 26, 0.88);
+  color: var(--hud-ink);
+  font-size: 11px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tree-cost svg {
+  width: 11px;
+  height: 11px;
+  color: var(--hud-violet);
+}
+
+.tree-node[data-state='ready'] .tree-cost,
+.tree-node[data-state='short'] .tree-cost {
+  display: flex;
+}
+
+.tree-node[data-state='short'] .tree-cost {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.tree-node.bought {
+  animation: node-bought 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+
+.tree-node.bought::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 3px solid var(--c);
+  border-radius: 50%;
+  opacity: 0;
+  animation: ring-out 0.7s ease-out;
+  pointer-events: none;
+}
+
+.tree-node.unlocked .tree-node-icon {
+  animation: icon-unlock 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+
+/* --- Card --- */
+
+.tree-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  align-self: center;
+  width: min(460px, calc(100% - 24px));
+  margin: 4px 0 calc(16px + env(safe-area-inset-bottom));
+  padding: 12px;
+  border: 1px solid var(--hud-glass-edge);
+  border-radius: 26px;
+  background: linear-gradient(180deg, var(--hud-glass-top), var(--hud-glass-bottom));
+  box-shadow: var(--hud-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  text-shadow: var(--hud-text-shadow);
+}
+
+.tree-card-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  color: #0d1826;
+  background: radial-gradient(circle at 50% 30%, #ffffff, var(--c) 72%);
+}
+
+.tree-card[data-state='locked'] .tree-card-icon {
+  color: rgba(255, 255, 255, 0.35);
+  background: #1a2a3c;
+}
+
+.tree-card-icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.tree-card-icon .hex {
+  width: 30px;
+  height: 34px;
+  font-size: 13px;
+}
+
+.tree-card.bought .tree-card-icon {
+  animation: slot-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+
+.tree-card-body {
+  min-width: 0;
+}
+
+.tree-card-name {
+  overflow: hidden;
+  color: var(--c);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-card-effect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  margin-top: 3px;
+}
+
+.tree-chip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 22px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.tree-chip svg {
+  width: 24px;
+  height: 24px;
+}
+
+.tree-chip .hex {
+  width: 24px;
+  height: 27px;
+  font-size: 11px;
+}
+
+.tree-hint {
+  color: var(--hud-dim);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tree-buy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 96px;
+  height: 52px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  color: #3a2205;
+  background: linear-gradient(180deg, #ffe597, var(--hud-gold-deep));
+  box-shadow: 0 4px 0 #a85d12, var(--hud-shadow);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tree-buy svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tree-buy:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #a85d12, var(--hud-shadow);
+}
+
+.tree-card[data-state='short'] .tree-buy,
+.tree-card[data-state='locked'] .tree-buy,
+.tree-card[data-state='owned'] .tree-buy {
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  transform: none;
+  cursor: default;
+}
+
+.tree-card[data-state='locked'] .tree-buy {
+  gap: 4px;
+  padding: 0 12px;
+}
+
+.tree-card[data-state='owned'] .tree-buy {
+  color: #0d1826;
+  background: var(--c);
+}
+
+.tree-need {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--c);
+  border-radius: 50%;
+  color: var(--c);
+}
+
+.tree-need svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tree-need .hex {
+  width: 15px;
+  height: 17px;
+  font-size: 7px;
+}
+
+.tree-buy.shake {
+  animation: hud-shake 0.36s;
+}
+
+@media (max-width: 480px) {
+  .tree-card {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .tree-card-icon {
+    width: 46px;
+    height: 46px;
+  }
+
+  .tree-chip {
+    font-size: 19px;
+  }
+
+  .tree-buy {
+    min-width: 82px;
+    height: 46px;
+    padding: 0 14px;
+    font-size: 18px;
+  }
+}
+
+/* --- Keyframes ------------------------------------------------------------- */
+
+@keyframes tree-beckon {
+  0%,
+  100% {
+    box-shadow: var(--hud-shadow), 0 0 0 0 rgba(195, 178, 255, 0.6);
+  }
+  50% {
+    box-shadow: var(--hud-shadow), 0 0 0 12px rgba(195, 178, 255, 0);
+  }
+}
+
+@keyframes tree-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -0.19;
+  }
+}
+
+@keyframes node-ready {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 9px transparent;
+  }
+}
+
+@keyframes sel-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes node-bought {
+  0% {
+    scale: 1.12;
+  }
+  35% {
+    scale: 1.5;
+  }
+  100% {
+    scale: 1.12;
+  }
+}
+
+@keyframes ring-out {
+  0% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    scale: 2.2;
+  }
+}
+
+@keyframes icon-unlock {
+  0% {
+    scale: 0.4;
+  }
+  60% {
+    scale: 1.25;
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+@keyframes shard-drain {
+  0% {
+    scale: 1;
+  }
+  30% {
+    scale: 0.86;
+    color: var(--hud-danger);
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tree-btn.beckon,
+  .tree-screen.opening,
+  .tree-edges line,
+  .tree-node,
+  .tree-node::before,
+  .tree-node::after,
+  .tree-node .tree-node-icon,
+  .tree-card-icon,
+  .tree-buy.shake,
+  .tree-screen .shards {
+    animation: none !important;
+  }
+
+  .tree-map.smooth {
+    transition: none;
+  }
+}

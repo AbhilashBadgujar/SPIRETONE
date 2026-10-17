@@ -39,6 +39,29 @@ export const ICONS = {
   lock: svg(`
     <path d="M7.5 11V8a4.5 4.5 0 0 1 9 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/>
     <rect x="5" y="11" width="14" height="10" rx="2.5" fill="currentColor"/>`),
+  tree: svg(`
+    <path d="M12 5.5 5.5 18.5M12 5.5l6.5 13M5.5 18.5h13" fill="none" stroke="currentColor" stroke-width="2" opacity=".55"/>
+    <circle cx="12" cy="5.5" r="3.4" fill="currentColor"/>
+    <circle cx="5.5" cy="18.5" r="2.8" fill="currentColor"/>
+    <circle cx="18.5" cy="18.5" r="2.8" fill="currentColor"/>`),
+  close: svg(`<path d="m6.5 6.5 11 11m0-11-11 11" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`),
+  check: svg(`<path d="m5 12.8 4.6 4.6L19.2 7.6" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>`),
+  gull: svg(`<path d="M1.8 10.2c3.4-2.6 6.9-2.2 10.2 2 3.3-4.2 6.8-4.6 10.2-2-3.2-.3-6.3 1.3-10.2 6-3.9-4.7-7-6.3-10.2-6z" fill="currentColor"/>`),
+  wind: svg(`
+    <path d="M3 8.5h10.5a3 3 0 1 0-3-3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M3 13h15a3 3 0 1 1-3 3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M3 17.5h7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" opacity=".55"/>`),
+  eye: svg(`
+    <path d="M1.8 12S5.5 5.3 12 5.3 22.2 12 22.2 12 18.5 18.7 12 18.7 1.8 12 1.8 12z" fill="currentColor" opacity=".5"/>
+    <circle cx="12" cy="12" r="4" fill="currentColor"/>`),
+  rapid: svg(`<path d="M2.5 5.5 11 12l-8.5 6.5zM12 5.5l8.5 6.5-8.5 6.5z" fill="currentColor"/>`),
+  skip: svg(`
+    <path d="M9 15h6v6H9z" fill="currentColor" opacity=".5"/>
+    <path d="M3 17.5C4.5 7 19.5 7 21 17.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="3 3"/>
+    <path d="m17.6 15.4 3.4 2.4 1.4-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`),
+  flag: svg(`
+    <path d="M5.5 3v18.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M6.5 3.8h12l-3 4.3 3 4.3h-12z" fill="currentColor"/>`),
 } as const;
 
 export const STRUCTURE_ICONS: Readonly<Record<StructureId, string>> = {

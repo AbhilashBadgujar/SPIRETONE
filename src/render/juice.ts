@@ -154,6 +154,8 @@ export class Juice {
     });
 
     // The new island hits the water: a splash ring round the rim and a crystal flare.
+    events.on('buy', () => this.view.pulseCrystal(0.5));
+
     events.on('ascendLand', () => {
       this.view.pulseCrystal(0.7);
       this.particles.dust.emit({
