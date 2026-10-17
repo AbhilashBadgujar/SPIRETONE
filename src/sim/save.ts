@@ -1,15 +1,19 @@
 import { HARMONY_TYPES, type EraIndex, type StructureId } from '../data/ids';
+import { NODE_BY_ID, type NodeId } from '../data/tree';
 import { evaluate, plazaGroup } from './evaluate';
 import type { ColumnId, Grid } from './grid';
 import type { Island } from './island';
 import { bonusesFor, type GameState, type Meta } from './run';
+import { effectsOf } from './tree';
 
 // Save format. Only source state is stored; the evaluation is rebuilt on
 // load. Loading is defensive: anything structurally wrong rejects the save,
 // while values that a later tuning pass could invalidate (a lowered cap) are
 // clamped instead.
+//
+// v1 → v2: v2 adds owned tree nodes. A v1 save loads with an empty tree.
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SaveData {
   v: typeof SAVE_VERSION;
@@ -37,7 +41,7 @@ export function serialize(state: GameState, now = Date.now()): SaveData {
   return {
     v: SAVE_VERSION,
     savedAt: now,
-    meta: { ...meta },
+    meta: { ...meta, nodes: meta.nodes.slice() },
     run: {
       island: {
         era: island.era,
@@ -59,10 +63,16 @@ export function serialize(state: GameState, now = Date.now()): SaveData {
 export function deserialize(grid: Grid, data: unknown): GameState | null {
   const n = grid.columnCount;
   const eras = grid.k.K_CAP_ERA.length;
-  if (!isObject(data) || data.v !== SAVE_VERSION) return null;
+  if (!isObject(data) || (data.v !== 1 && data.v !== SAVE_VERSION)) return null;
   const { meta, run } = data;
   if (!isObject(meta) || !isObject(run) || !isObject(run.island)) return null;
   const isl = run.island;
+
+  // Owned nodes: known ids only, each once. The era follows from them.
+  const savedNodes = data.v === 1 ? [] : meta.nodes;
+  if (!Array.isArray(savedNodes)) return null;
+  const nodes = [...new Set(savedNodes as unknown[])].filter((id): id is NodeId => typeof id === 'string' && id in NODE_BY_ID);
+  const highestEra = effectsOf(nodes).highestEra;
 
   if (
     !nonNeg(meta.shards) ||
@@ -70,7 +80,7 @@ export function deserialize(grid: Grid, data: unknown): GameState | null {
     !nonNeg(meta.ascensions) ||
     !nonNeg(meta.lifetimeResonance) ||
     !isEra(isl.era, eras) ||
-    isl.era > meta.highestEra ||
+    isl.era > highestEra ||
     !arrayOf(isl.heights, n, (h) => Number.isInteger(h) && h >= 0) ||
     !arrayOf(isl.golden, n, (g) => typeof g === 'boolean') ||
     !Array.isArray(isl.plazas) ||
@@ -114,7 +124,8 @@ export function deserialize(grid: Grid, data: unknown): GameState | null {
   };
   const restoredMeta: Meta = {
     shards: Math.floor(meta.shards as number),
-    highestEra: meta.highestEra as EraIndex,
+    nodes,
+    highestEra,
     ascensions: Math.floor(meta.ascensions as number),
     lifetimeResonance: meta.lifetimeResonance as number,
   };
@@ -127,6 +138,7 @@ export function deserialize(grid: Grid, data: unknown): GameState | null {
       tickCarry: Math.min(run.tickCarry as number, grid.k.K_TICK),
       rngSeed: run.rngSeed as number,
       evaluation: evaluate(grid, island, bonusesFor(restoredMeta)),
+      gullCarry: 0,
     },
   };
 }

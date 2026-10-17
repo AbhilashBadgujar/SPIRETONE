@@ -103,7 +103,7 @@ export function ascendThreshold(grid: Grid, island: Island): number {
 }
 
 export function blockCost(k: Readonly<Constants>, n: number, era: EraIndex): number {
-  return k.K_COST_BASE * Math.pow(k.K_COST_GROWTH[era], n);
+  return k.K_COST_BASE[era] * Math.pow(k.K_COST_GROWTH[era], n);
 }
 
 /** Lowest droppable neighbor; ties go Left, Right, Inner, Outer. */

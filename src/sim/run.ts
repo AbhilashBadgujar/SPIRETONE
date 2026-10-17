@@ -1,6 +1,7 @@
 import type { EraIndex } from '../data/ids';
+import type { NodeId } from '../data/tree';
 import { nextRandom } from '../lib/rng';
-import { evaluate, NO_BONUSES, type Bonuses, type Evaluation } from './evaluate';
+import { evaluate, type Bonuses, type Evaluation } from './evaluate';
 import type { ColumnId, Grid } from './grid';
 import {
   ascendThreshold,
@@ -13,13 +14,16 @@ import {
   type DropRejection,
   type Island,
 } from './island';
+import { effectsOf } from './tree';
 
 // Run + meta state: Resonance, ticks, paid drops and Ascension (GDD §5).
 
 /** Survives Ascension. */
 export interface Meta {
   shards: number;
-  /** New islands always start in this era (GDD §5 rules). */
+  /** Owned upgrade-tree nodes, in purchase order (GDD §7). */
+  nodes: NodeId[];
+  /** New islands always start in this era (GDD §5 rules). Follows the owned core nodes. */
   highestEra: EraIndex;
   ascensions: number;
   lifetimeResonance: number;
@@ -35,6 +39,8 @@ export interface Run {
   tickCarry: number;
   rngSeed: number;
   evaluation: Evaluation;
+  /** Seconds banked toward the flock's next Gull drop (GDD §8). Not saved. */
+  gullCarry: number;
 }
 
 export interface GameState {
@@ -46,9 +52,9 @@ export type DropAttempt =
   | { ok: false; reason: DropRejection | 'CANT_AFFORD' }
   | { ok: true; cost: number; outcome: DropOutcome };
 
-/** Upgrade-tree effects. The tree isn't specced yet (GDD §7+ missing), so nothing applies. */
-export function bonusesFor(_meta: Meta): Readonly<Bonuses> {
-  return NO_BONUSES;
+/** Upgrade-tree bonuses for evaluation (GDD §7). */
+export function bonusesFor(meta: Meta): Readonly<Bonuses> {
+  return effectsOf(meta.nodes).bonuses;
 }
 
 /** Control unlocks from the tree (GDD §4). Same gap as bonusesFor. */
@@ -59,24 +65,25 @@ export interface Unlocks {
   orbitSkipsBlocked: boolean;
 }
 
-export function unlocksFor(_meta: Meta): Readonly<Unlocks> {
-  return { rapidDrop: false, orbitSkipsBlocked: false };
+export function unlocksFor(meta: Meta): Readonly<Unlocks> {
+  return effectsOf(meta.nodes);
 }
 
 export function startIsland(grid: Grid, meta: Meta, rngSeed: number): Run {
   const island = createIsland(grid, meta.highestEra);
   return {
     island,
-    resonance: grid.k.K_START_RES,
+    resonance: grid.k.K_START_RES[meta.highestEra] * effectsOf(meta.nodes).startResMult,
     earned: 0,
     tickCarry: 0,
     rngSeed,
     evaluation: evaluate(grid, island, bonusesFor(meta)),
+    gullCarry: 0,
   };
 }
 
 export function newGame(grid: Grid, seed: number): GameState {
-  const meta: Meta = { shards: 0, highestEra: 0, ascensions: 0, lifetimeResonance: 0 };
+  const meta: Meta = { shards: 0, nodes: [], highestEra: 0, ascensions: 0, lifetimeResonance: 0 };
   return { meta, run: startIsland(grid, meta, seed) };
 }
 

@@ -9,6 +9,8 @@ import type { Island } from './island';
 export interface Bonuses {
   /** Upgrade-tree percentage bonus, added to every column's additive term. */
   additive: number;
+  /** Upgrade-tree percentage bonus for one structure type, added to its columns' additive term. */
+  additiveByType: Readonly<Partial<Record<StructureId, number>>>;
   /** treeIncomeMult in income_per_sec. */
   incomeMult: number;
   /** Chance that a column's first block rolls MOD_GOLDEN. */
@@ -17,6 +19,7 @@ export interface Bonuses {
 
 export const NO_BONUSES: Readonly<Bonuses> = Object.freeze({
   additive: 0,
+  additiveByType: Object.freeze({}),
   incomeMult: 1,
   goldenChance: 0,
 });
@@ -196,7 +199,8 @@ export function evaluate(grid: Grid, island: Island, bonuses: Readonly<Bonuses> 
       balconySides * k.K_M_BALCONY +
       beacons * k.K_M_BEACON +
       (plazaAura ? k.K_M_PLAZA_AURA : 0) +
-      bonuses.additive;
+      bonuses.additive +
+      (bonuses.additiveByType[structure] ?? 0);
 
     const y = (base * (1 + additive) + overclock) * (golden ? k.K_M_GOLDEN : 1);
     yieldSum += y;

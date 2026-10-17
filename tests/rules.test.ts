@@ -137,7 +137,7 @@ describe('GDD §3 modifiers', () => {
   });
 
   it('adds tree bonuses to the additive term', () => {
-    const { ev } = evalWith(0, { '0,0': 1 }, { bonuses: { additive: 1, incomeMult: 1, goldenChance: 0 } });
+    const { ev } = evalWith(0, { '0,0': 1 }, { bonuses: { additive: 1, additiveByType: {}, incomeMult: 1, goldenChance: 0 } });
     expect(ev.columns[id(0, 0)].yield).toBe(4);
   });
 });
@@ -170,7 +170,7 @@ describe('GDD §5 Harmony and income', () => {
   });
 
   it('income = sum(yield) * harmony * era mult * tree mult', () => {
-    const one = evalWith(1, { '0,0': 1 }, { bonuses: { additive: 0, incomeMult: 2, goldenChance: 0 } }).ev;
+    const one = evalWith(1, { '0,0': 1 }, { bonuses: { additive: 0, additiveByType: {}, incomeMult: 2, goldenChance: 0 } }).ev;
     expect(one.income).toBeCloseTo(2 * 1.5 * 3 * 2);
   });
 });

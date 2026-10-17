@@ -10,6 +10,8 @@ export interface CursorContext {
   bonuses: Readonly<Bonuses>;
   /** NODE_O5: skip capped / plaza-locked columns instead of visiting them greyed out. */
   skipBlocked: boolean;
+  /** Tree multiplier on K_CURSOR_STEP (NODE_O1, O2, O4). Defaults to 1. */
+  stepMult?: number;
 }
 
 /**
@@ -76,7 +78,7 @@ export class OrbitCursor {
     this.column = c;
     const p = previewDrop(this.grid, ctx.island, c, ctx.bonuses, ctx.evaluation);
     this.smart = p !== null && (p.newType || p.newBridge || p.newLighthouse);
-    this.remaining = k.K_CURSOR_STEP + (this.smart ? k.K_SMART_PAUSE : 0);
+    this.remaining = k.K_CURSOR_STEP * (ctx.stepMult ?? 1) + (this.smart ? k.K_SMART_PAUSE : 0);
   }
 }
 

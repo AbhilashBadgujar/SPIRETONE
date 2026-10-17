@@ -1,10 +1,10 @@
-import { DEFAULT_CONSTANTS } from '../src/data/constants';
 import type { EraIndex } from '../src/data/ids';
 import { evaluate, rebuildPlazas, type Bonuses } from '../src/sim/evaluate';
 import { buildGrid, columnId } from '../src/sim/grid';
 import { createIsland, type Island } from '../src/sim/island';
+import { GDD_V1 } from './gdd-v1';
 
-export const k = DEFAULT_CONSTANTS;
+export const k = GDD_V1;
 export const grid = buildGrid(k);
 
 /** Column id from (ring, index). */

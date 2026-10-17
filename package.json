@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "pacing": "rolldown tools/pacing.ts --format esm --platform node --file node_modules/.cache/pacing.mjs --log-level warn && node node_modules/.cache/pacing.mjs"
   },
   "dependencies": {
     "three": "^0.186.1"

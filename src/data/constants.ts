@@ -37,8 +37,10 @@ export interface Constants {
   K_SMART_PAUSE: number;
 
   // §5 Economy
-  K_START_RES: number;
-  K_COST_BASE: number;
+  /** Per era, like K_COST_BASE (§11 tuning). */
+  K_START_RES: readonly number[];
+  /** Per era (§11 tuning; the GDD v1 table had one value for all eras). */
+  K_COST_BASE: readonly number[];
   K_COST_GROWTH: readonly number[];
   K_ERA_YIELD_MULT: readonly number[];
   K_HARMONY_PER_TYPE: number;
@@ -89,8 +91,10 @@ export const DEFAULT_CONSTANTS: Readonly<Constants> = Object.freeze({
   K_CURSOR_STEP: 0.35,
   K_SMART_PAUSE: 0.3,
 
-  K_START_RES: 20,
-  K_COST_BASE: 10,
+  // Tuned by tools/pacing.ts (GDD §11). GDD v1 had 20 and 10 for every era, which
+  // ran the whole game about 100x too fast.
+  K_START_RES: [3000, 5000, 24000, 240000],
+  K_COST_BASE: [1500, 2500, 12000, 120000],
   K_COST_GROWTH: [1.08, 1.07, 1.06, 1.055],
   K_ERA_YIELD_MULT: [1, 3, 10, 30],
   K_HARMONY_PER_TYPE: 0.5,

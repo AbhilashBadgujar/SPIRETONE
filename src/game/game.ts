@@ -21,6 +21,7 @@ import {
   unlocksFor,
   type GameState,
 } from '../sim/run';
+import { effectsOf } from '../sim/tree';
 import { ASCENSION, ASCENSION_TOTAL, ascensionPose } from './ascension';
 import { OrbitCursor, moveSelection, type CursorContext } from './cursor';
 import { Emitter, type GameEvents } from './events';
@@ -364,6 +365,7 @@ export class Game {
       evaluation: run.evaluation,
       bonuses: bonusesFor(meta),
       skipBlocked: unlocksFor(meta).orbitSkipsBlocked,
+      stepMult: effectsOf(meta.nodes).cursorStepMult,
     };
   }
 
