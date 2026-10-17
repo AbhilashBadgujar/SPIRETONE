@@ -54,6 +54,7 @@ if (!isDemo) {
   window.addEventListener('pagehide', save);
   game.events.on('ascend', save);
   game.events.on('buy', save);
+  game.events.on('achievement', save);
 }
 
 let last = performance.now();

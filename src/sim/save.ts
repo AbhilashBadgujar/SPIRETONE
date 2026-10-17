@@ -1,5 +1,7 @@
+import { ACH_BY_ID, STAT_IDS, type AchId } from '../data/achievements';
 import { HARMONY_TYPES, type EraIndex, type StructureId } from '../data/ids';
 import { NODE_BY_ID, type NodeId } from '../data/tree';
+import { emptyStats } from './achievements';
 import { evaluate, plazaGroup } from './evaluate';
 import type { ColumnId, Grid } from './grid';
 import type { Island } from './island';
@@ -12,8 +14,11 @@ import { effectsOf } from './tree';
 // clamped instead.
 //
 // v1 → v2: v2 adds owned tree nodes. A v1 save loads with an empty tree.
+// v2 → v3: v3 adds lifetime stats and unlocked achievements. Older saves
+// load with zeroed stats; achievements they already earned (Ascensions,
+// eras, tree nodes) unlock again on the first check.
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SaveData {
   v: typeof SAVE_VERSION;
@@ -41,7 +46,7 @@ export function serialize(state: GameState, now = Date.now()): SaveData {
   return {
     v: SAVE_VERSION,
     savedAt: now,
-    meta: { ...meta, nodes: meta.nodes.slice() },
+    meta: { ...meta, nodes: meta.nodes.slice(), stats: { ...meta.stats }, achievements: meta.achievements.slice() },
     run: {
       island: {
         era: island.era,
@@ -63,7 +68,7 @@ export function serialize(state: GameState, now = Date.now()): SaveData {
 export function deserialize(grid: Grid, data: unknown): GameState | null {
   const n = grid.columnCount;
   const eras = grid.k.K_CAP_ERA.length;
-  if (!isObject(data) || (data.v !== 1 && data.v !== SAVE_VERSION)) return null;
+  if (!isObject(data) || (data.v !== 1 && data.v !== 2 && data.v !== SAVE_VERSION)) return null;
   const { meta, run } = data;
   if (!isObject(meta) || !isObject(run) || !isObject(run.island)) return null;
   const isl = run.island;
@@ -73,6 +78,13 @@ export function deserialize(grid: Grid, data: unknown): GameState | null {
   if (!Array.isArray(savedNodes)) return null;
   const nodes = [...new Set(savedNodes as unknown[])].filter((id): id is NodeId => typeof id === 'string' && id in NODE_BY_ID);
   const highestEra = effectsOf(nodes).highestEra;
+
+  // Counters only feed achievements, so a bad one is zeroed rather than rejecting the save.
+  const stats = emptyStats();
+  const savedStats = data.v === SAVE_VERSION && isObject(meta.stats) ? meta.stats : {};
+  for (const id of STAT_IDS) if (nonNeg(savedStats[id])) stats[id] = Math.floor(savedStats[id] as number);
+  const savedAch = data.v === SAVE_VERSION && Array.isArray(meta.achievements) ? meta.achievements : [];
+  const achievements = [...new Set(savedAch as unknown[])].filter((id): id is AchId => typeof id === 'string' && id in ACH_BY_ID);
 
   if (
     !nonNeg(meta.shards) ||
@@ -128,6 +140,8 @@ export function deserialize(grid: Grid, data: unknown): GameState | null {
     highestEra,
     ascensions: Math.floor(meta.ascensions as number),
     lifetimeResonance: meta.lifetimeResonance as number,
+    stats,
+    achievements,
   };
   return {
     meta: restoredMeta,

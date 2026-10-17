@@ -12,6 +12,7 @@ import { LAYOUT, columnAngle, columnTopY, columnX, columnZ } from '../render/lay
 import { Ocean } from '../render/ocean';
 import { Stage } from '../render/scene';
 import { evaluate } from '../sim/evaluate';
+import { checkAchievements } from '../sim/achievements';
 import type { ColumnId, Grid } from '../sim/grid';
 import { advanceGulls } from '../sim/gulls';
 import { ascendThreshold, isDroppable, previewDrop, totalBlocks, type DropPreview } from '../sim/island';
@@ -128,6 +129,8 @@ export class Game {
     this.juice.reset(state.run.evaluation);
     this.mode = mode;
     this.orbit.reset(this.cursorContext());
+    // Back-fill quietly: a save from before achievements has already earned some.
+    checkAchievements(state);
   }
 
   get controlMode(): ControlMode {
@@ -189,6 +192,7 @@ export class Game {
     run.evaluation = evaluate(this.grid, run.island, bonusesFor(meta));
     this.refreshIsland();
     this.events.emit('buy', { id });
+    this.unlock();
     return null;
   }
 
@@ -265,6 +269,11 @@ export class Game {
   ): void {
     this.refreshIsland();
     this.events.emit('drop', { column: c, cost: attempt.cost, outcome: attempt.outcome, incomeBefore, by, delay });
+    this.unlock();
+  }
+
+  private unlock(): void {
+    for (const id of checkAchievements(this.state)) this.events.emit('achievement', { id });
   }
 
   /** A worker Gull carries the block in; it falls on its own if every bird is busy. */
@@ -426,6 +435,7 @@ export class Game {
     this.orbit.reset(this.cursorContext());
     this.events.emit('ascend', { shards });
     if (eraChanged) this.events.emit('era', { era: this.era });
+    this.unlock();
   }
 
   private updateTurntable(dt: number): void {

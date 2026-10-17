@@ -80,6 +80,15 @@ export class Sound {
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.mutedFlag ? 0 : MASTER, this.ctx.currentTime, 0.02);
   }
 
+  /** Achievement toast: a bright bell, a fifth, then a high sparkle. */
+  chime(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.02;
+    this.arpeggio([7, 12], t, 0.09, 0.2, 12);
+    this.arpeggio([14, 16, 19], t + 0.22, 0.04, 0.09, 12);
+  }
+
   /** Per frame: the Ascend charge tone follows the hold. */
   update(): void {
     const ctx = this.ctx;

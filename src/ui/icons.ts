@@ -70,6 +70,16 @@ export const ICONS = {
     <rect x="9" y="9.5" width="6.5" height="6.5" rx="1.2" fill="currentColor" opacity=".75"/>
     <rect x="15.5" y="16" width="6.5" height="6.5" rx="1.2" fill="currentColor" opacity=".5"/>
     <path d="M9.5 3.8c3.6 0 5.6 1.6 6.3 4.4M16 10.3c3.4.2 5 1.9 5.4 4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>`),
+  trophy: svg(`
+    <path d="M6.5 3.5h11v5.2a5.5 5.5 0 0 1-11 0z" fill="currentColor"/>
+    <path d="M6.6 5.2H3.5v1.6a3.6 3.6 0 0 0 3.6 3.6M17.4 5.2h3.1v1.6a3.6 3.6 0 0 1-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.9" opacity=".7"/>
+    <path d="M10.6 13.8h2.8v3.4h-2.8z" fill="currentColor" opacity=".7"/>
+    <path d="M7.5 17.2h9v3.3h-9z" fill="currentColor"/>`),
+  balcony: svg(`
+    <path d="M7.5 2.5h9v19h-9z" fill="currentColor" opacity=".5"/>
+    <path d="M10.2 5.5h3.6v4.5h-3.6z" fill="currentColor"/>
+    <path d="M4 12h16v2.4H4z" fill="currentColor"/>
+    <path d="M5.5 14.4v3.4M9.8 14.4v3.4M14.2 14.4v3.4M18.5 14.4v3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`),
   flag: svg(`
     <path d="M5.5 3v18.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
     <path d="M6.5 3.8h12l-3 4.3 3 4.3h-12z" fill="currentColor"/>`),

@@ -49,7 +49,9 @@ export function advanceGulls(grid: Grid, state: GameState, dt: number): GullDrop
     if (c === null) continue;
     const incomeBefore = run.evaluation.income;
     const attempt = tryDrop(grid, state, c);
-    if (attempt.ok) drops.push({ column: c, attempt, incomeBefore });
+    if (!attempt.ok) continue;
+    state.meta.stats.gullDrops += 1;
+    drops.push({ column: c, attempt, incomeBefore });
   }
   return drops;
 }

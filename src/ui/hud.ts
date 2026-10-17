@@ -1,12 +1,15 @@
 import { Vector3 } from 'three';
+import { ACH_BY_ID, ACHIEVEMENTS, MAX_GAMERSCORE, type AchId } from '../data/achievements';
 import { MODIFIER_MIN_ERA } from '../data/constants';
 import { ERA_PRESETS } from '../data/eras';
 import { ERA_IDS, HARMONY_TYPES, STRUCTURE_NAMES, type EraIndex, type StructureId } from '../data/ids';
 import type { Game } from '../game/game';
 import { formatNumber } from '../lib/format';
 import type { GameEvents } from '../game/events';
+import { gamerscore } from '../sim/achievements';
 import { ascendThreshold, totalBlocks } from '../sim/island';
 import { bonusesFor, canAscend, shardsOnAscend } from '../sim/run';
+import { ACHIEVEMENT_ICONS } from './achievement-icons';
 import { AscendButton } from './ascend-button';
 import { DiscoveryBurst } from './burst';
 import { Ceremony } from './ceremony';
@@ -14,6 +17,7 @@ import { EraCard } from './era-card';
 import { Floaters } from './floaters';
 import { ICONS, STRUCTURE_ICONS } from './icons';
 import { restartClass } from './restart-class';
+import { Toasts } from './toasts';
 import { TreeScreen } from './tree-screen';
 
 // Icon-first HUD. Numbers and icons only; names live in hover tooltips.
@@ -24,6 +28,8 @@ import { TreeScreen } from './tree-screen';
 //   cursor      cost chip with what the drop will become
 //   bottom      Ascend button (fill ring, hold ring, Shards preview)
 //   bottom-left upgrade tree button, dotted when a node is affordable
+//   top-right   achievement toasts, under the pills
+//   pause       play button and the trophy shelf
 
 const ROMAN = ['I', 'II', 'III', 'IV'];
 /** Seconds between ambient "+N" pops anywhere on the island. */
@@ -36,9 +42,11 @@ const POP_RESERVE = 8;
 const MAX_BRIDGE_TAGS = 2;
 
 /** What the HUD needs from the audio layer. */
-export interface MuteControl {
+export interface HudSound {
   readonly muted: boolean;
   toggleMute(): void;
+  /** An achievement toast appearing. */
+  chime(): void;
 }
 
 class Rolling {
@@ -84,6 +92,8 @@ export class Hud {
   /** A new era reached at the peak, revealed once the Shards card has landed. */
   private eraToReveal: EraIndex | null = null;
   private readonly veil: HTMLDivElement;
+  private readonly toasts: Toasts;
+  private readonly trophies: { score: HTMLElement; tiles: Map<AchId, HTMLElement>; caption: HTMLElement };
   private readonly treeBtn: HTMLButtonElement;
   private treeKey = '';
   /** Drop feedback waiting for a worker Gull to let go of its block. */
@@ -103,7 +113,7 @@ export class Hud {
   constructor(
     private readonly game: Game,
     private readonly root: HTMLElement,
-    sound?: MuteControl,
+    sound?: HudSound,
   ) {
     const top = document.createElement('div');
     top.className = 'hud-top';
@@ -197,16 +207,43 @@ export class Hud {
     root.appendChild(this.treeBtn);
     this.tree = new TreeScreen(game, root);
 
-    // Pause veil: tap anywhere to resume.
+    // Pause veil: tap anywhere but the trophy shelf to resume.
     this.veil = document.createElement('div');
     this.veil.className = 'pause-veil';
     this.veil.hidden = true;
-    this.veil.innerHTML = `<div class="pause-play" role="button" aria-label="Resume">${ICONS.play}</div>`;
+    this.veil.innerHTML = `
+      <div class="pause-play" role="button" aria-label="Resume">${ICONS.play}</div>
+      <div class="trophies">
+        <div class="trophies-head">${ICONS.trophy}<span class="trophies-score">0</span><small>/${MAX_GAMERSCORE}</small></div>
+        <div class="trophies-grid">${ACHIEVEMENTS.map(
+          (a) => `<span class="trophy" data-id="${a.id}" aria-label="${a.name}">${ACHIEVEMENT_ICONS[a.id]}</span>`,
+        ).join('')}</div>
+        <div class="trophies-caption">&nbsp;</div>
+      </div>`;
     this.veil.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       game.setPaused(false);
     });
+    const shelf = this.veil.querySelector<HTMLElement>('.trophies')!;
+    this.trophies = {
+      score: shelf.querySelector('.trophies-score')!,
+      caption: shelf.querySelector('.trophies-caption')!,
+      tiles: new Map([...shelf.querySelectorAll<HTMLElement>('.trophy')].map((el) => [el.dataset.id as AchId, el])),
+    };
+    // Hover or tap a tile to read it; the shelf itself never resumes.
+    const describe = (e: Event) => {
+      const id = (e.target as HTMLElement).closest<HTMLElement>('.trophy')?.dataset.id as AchId | undefined;
+      if (id) this.describeTrophy(id);
+    };
+    shelf.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      describe(e);
+    });
+    shelf.addEventListener('pointerover', describe);
     root.appendChild(this.veil);
+
+    this.toasts = new Toasts(root, () => sound?.chime());
 
     const n = game.grid.columnCount;
     this.earned = new Float64Array(n);
@@ -252,6 +289,9 @@ export class Hud {
     }
     this.floaters.update(dt);
     this.ceremony.update(this.game.ascensionTime);
+    // Toasts wait while the Ascension, its Shards card or the era card is up.
+    const busy = this.game.isAscending || this.pendingShards > 0 || this.eraToReveal !== null || this.eraCard.showing;
+    this.toasts.update(dt, busy);
     this.renderTreeButton();
     this.tree.update();
   }
@@ -315,9 +355,25 @@ export class Hud {
 
     events.on('pause', ({ reason }) => {
       this.veil.hidden = reason !== 'menu';
+      if (reason === 'menu') this.renderTrophies();
       if (reason === 'tree') this.treeBtn.classList.remove('beckon');
     });
+    events.on('achievement', ({ id }) => this.toasts.push(id));
     events.on('resume', () => (this.veil.hidden = true));
+  }
+
+  private renderTrophies(): void {
+    const owned = this.game.state.meta.achievements;
+    this.trophies.score.textContent = String(gamerscore(owned));
+    for (const [id, el] of this.trophies.tiles) el.classList.toggle('won', owned.includes(id));
+    this.trophies.caption.innerHTML = '&nbsp;';
+  }
+
+  private describeTrophy(id: AchId): void {
+    const a = ACH_BY_ID[id];
+    const won = this.game.state.meta.achievements.includes(id);
+    this.trophies.caption.innerHTML = `<b></b><span>${won ? ICONS.check : ICONS.lock}${a.points}G</span>`;
+    this.trophies.caption.querySelector('b')!.textContent = a.name;
   }
 
   /** HUD half of a drop: gain, spend, discoveries, tags. */

@@ -13,11 +13,15 @@
 //   - After each Ascension buys tree nodes: the next core node whenever
 //     affordable, otherwise the cheapest affordable node, until nothing fits.
 //   - Each Ascension costs the sequence time plus TREE_BROWSE seconds.
+//   - Keeps playing after the full tree until every achievement (GDD §9) is
+//     unlocked, checking them after every event the game checks them on.
 
+import { ACH_BY_ID, ACHIEVEMENTS, MAX_GAMERSCORE, type AchId } from '../src/data/achievements';
 import { DEFAULT_CONSTANTS, type Constants } from '../src/data/constants';
 import { TREE, type NodeId } from '../src/data/tree';
 import { ASCENSION_TOTAL } from '../src/game/ascension';
 import { OrbitCursor } from '../src/game/cursor';
+import { checkAchievements, gamerscore } from '../src/sim/achievements';
 import { buildGrid, type Grid } from '../src/sim/grid';
 import { advanceGulls } from '../src/sim/gulls';
 import { cloneIsland, dropBlock, isDroppable, totalBlocks } from '../src/sim/island';
@@ -49,6 +53,7 @@ export const TARGETS = {
   era3: [75, 80],
   era4: [115, 125],
   fullTree: [150, 160],
+  gamerscore1000: [165, 180],
 } as const;
 
 export interface IslandLog {
@@ -64,6 +69,8 @@ export interface IslandLog {
 export interface RunReport {
   islands: IslandLog[];
   milestones: Partial<Record<keyof typeof TARGETS, number>>;
+  /** Unlock time of each achievement, in minutes, in unlock order. */
+  achievements: { id: AchId; min: number }[];
   endMin: number;
   /** An island began that the player could never afford a block on. */
   stuck: boolean;
@@ -107,6 +114,10 @@ export function simulateRun(k: Readonly<Constants> = DEFAULT_CONSTANTS, seed = 7
   const dt = k.K_TICK;
   let t = 0;
   let stuck = false;
+  const achievements: RunReport['achievements'] = [];
+  const unlock = () => {
+    for (const id of checkAchievements(s)) achievements.push({ id, min: t / 60 });
+  };
 
   while (t < PLAYER.TIME_LIMIT_MIN * 60) {
     const start = t;
@@ -130,7 +141,10 @@ export function simulateRun(k: Readonly<Constants> = DEFAULT_CONSTANTS, seed = 7
       advance(grid, s, dt);
       t += dt;
       if (cursor.update(dt, ctx())) visit++;
-      if (advanceGulls(grid, s, dt).length) g = gains(grid, s);
+      if (advanceGulls(grid, s, dt).length) {
+        g = gains(grid, s);
+        unlock();
+      }
 
       const best = Math.max(...g);
       if (canAscend(grid, s.run)) {
@@ -152,6 +166,7 @@ export function simulateRun(k: Readonly<Constants> = DEFAULT_CONSTANTS, seed = 7
       const canPress = effects.rapidDrop ? t - lastPlayerDrop >= k.K_RAPID_INTERVAL : visit !== droppedOnVisit;
       if (canPress && s.run.resonance >= currentCost(grid, s.run) && g[c] > 0 && g[c] >= PLAYER.PICKY * best) {
         tryDrop(grid, s, c);
+        unlock();
         lastPlayerDrop = t;
         droppedOnVisit = visit;
         g = gains(grid, s);
@@ -172,19 +187,23 @@ export function simulateRun(k: Readonly<Constants> = DEFAULT_CONSTANTS, seed = 7
       if (id === 'NODE_C2') milestones.era3 = t / 60;
       if (id === 'NODE_C3') milestones.era4 = t / 60;
     }
+    unlock();
     islands.push({ n: islands.length + 1, era, startMin: start / 60, minutes, blocks, shards, bought });
-    if (s.meta.nodes.length === TREE.length) {
-      milestones.fullTree = t / 60;
+    if (s.meta.nodes.length === TREE.length && milestones.fullTree === undefined) milestones.fullTree = t / 60;
+    if (gamerscore(s.meta.achievements) >= MAX_GAMERSCORE) {
+      milestones.gamerscore1000 = achievements[achievements.length - 1].min;
       break;
     }
   }
-  return { islands, milestones, endMin: t / 60, stuck };
+  return { islands, milestones, achievements, endMin: t / 60, stuck };
 }
 
 function fmt(min: number | undefined): string {
   if (min === undefined) return '  —  ';
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
+  // Round first, so 59.6 minutes reads 1:00, not 0:60.
+  const total = Math.round(min);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   return `${h}:${String(m).padStart(2, '0')}`;
 }
 
@@ -196,6 +215,15 @@ export function printReport(r: RunReport): void {
       `${String(i.n).padStart(2)}  ${String(i.era).padStart(3)}  ${fmt(i.startMin).padStart(5)}  ${i.minutes.toFixed(1).padStart(6)}  ${String(i.blocks).padStart(6)}  ${String(i.shards).padStart(6)}  ${i.bought.map((b) => b.replace('NODE_', '')).join(' ')}`,
     );
   }
+  console.log('\nachievement          G   at');
+  let score = 0;
+  for (const a of r.achievements) {
+    score += ACH_BY_ID[a.id].points;
+    console.log(`${a.id.replace('ACH_', '').padEnd(16)} ${String(ACH_BY_ID[a.id].points).padStart(3)}  ${fmt(a.min).padStart(5)}  ${String(score).padStart(4)}G`);
+  }
+  const missing = ACHIEVEMENTS.filter((a) => !r.achievements.some((x) => x.id === a.id));
+  if (missing.length) console.log(`never unlocked: ${missing.map((a) => a.id).join(' ')}`);
+
   console.log('\nmilestone        sim     target');
   for (const key of Object.keys(TARGETS) as (keyof typeof TARGETS)[]) {
     const [lo, hi] = TARGETS[key];

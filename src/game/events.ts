@@ -1,3 +1,4 @@
+import type { AchId } from '../data/achievements';
 import type { EraIndex } from '../data/ids';
 import type { NodeId } from '../data/tree';
 import type { DropRejection, DropOutcome } from '../sim/island';
@@ -31,6 +32,8 @@ export interface GameEvents {
   buy: { id: NodeId };
   /** A tree purchase was refused. */
   buyFail: { id: NodeId; reason: BuyRejection };
+  /** An achievement unlocked (GDD §9). */
+  achievement: { id: AchId };
 }
 
 type Handler<T> = (payload: T) => void;

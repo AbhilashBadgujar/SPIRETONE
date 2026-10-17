@@ -1,6 +1,8 @@
+import type { AchId, Stats } from '../data/achievements';
 import type { EraIndex } from '../data/ids';
 import type { NodeId } from '../data/tree';
 import { nextRandom } from '../lib/rng';
+import { emptyStats, recordDrop } from './achievements';
 import { evaluate, type Bonuses, type Evaluation } from './evaluate';
 import type { ColumnId, Grid } from './grid';
 import {
@@ -27,6 +29,10 @@ export interface Meta {
   highestEra: EraIndex;
   ascensions: number;
   lifetimeResonance: number;
+  /** Lifetime counters for achievements (GDD §9). */
+  stats: Stats;
+  /** Unlocked achievements, in unlock order. */
+  achievements: AchId[];
 }
 
 /** Reset by Ascension. */
@@ -83,7 +89,15 @@ export function startIsland(grid: Grid, meta: Meta, rngSeed: number): Run {
 }
 
 export function newGame(grid: Grid, seed: number): GameState {
-  const meta: Meta = { shards: 0, nodes: [], highestEra: 0, ascensions: 0, lifetimeResonance: 0 };
+  const meta: Meta = {
+    shards: 0,
+    nodes: [],
+    highestEra: 0,
+    ascensions: 0,
+    lifetimeResonance: 0,
+    stats: emptyStats(),
+    achievements: [],
+  };
   return { meta, run: startIsland(grid, meta, seed) };
 }
 
@@ -108,6 +122,7 @@ export function tryDrop(grid: Grid, state: GameState, c: ColumnId): DropAttempt 
     run.evaluation,
   );
   run.evaluation = outcome.evaluation;
+  recordDrop(state.meta.stats, outcome);
   return { ok: true, cost, outcome };
 }
 
@@ -140,6 +155,7 @@ export function ascend(grid: Grid, state: GameState): number | null {
   const shards = shardsOnAscend(grid, state.run);
   state.meta.shards += shards;
   state.meta.ascensions += 1;
+  state.meta.stats.bestAscend = Math.max(state.meta.stats.bestAscend, shards);
   const seed = Math.floor(nextRandom(state.run) * 4294967296) | 0;
   state.run = startIsland(grid, state.meta, seed);
   return shards;
