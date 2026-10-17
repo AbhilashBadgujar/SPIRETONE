@@ -1,8 +1,11 @@
 import type { EraId } from './ids';
 
 // Per-era look presets (GDD §6 "one data asset each"). Meshes never change
-// between eras; only these values do. Particles and music stems join in
-// Steps 5 and 9.
+// between eras; only these values do. Ambient particles and music stems
+// join in Step 9.
+//
+// music.root / music.scale are PLACEHOLDERS: the GDD gives every era a root
+// key but doesn't say which. Swap them here.
 
 export interface EraPreset {
   id: EraId;
@@ -52,6 +55,13 @@ export interface EraPreset {
     waveSpeed: number;
     waveHeight: number;
   };
+  /** Root key for drop notes and chords. */
+  music: {
+    /** MIDI note number of the tonic. */
+    root: number;
+    /** Pentatonic flavor. */
+    scale: 'major' | 'minor';
+  };
 }
 
 export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
@@ -68,6 +78,7 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     sky: { top: 0x7cc3ea, bottom: 0xf7e9cc },
     fog: { color: 0xeee6d2, density: 0.012 },
     ocean: { shallow: 0x35c4bf, deep: 0x16708f, foam: 0xffffff, waveSpeed: 0.6, waveHeight: 0.12 },
+    music: { root: 62, scale: 'major' }, // D
   },
   // Golden hour, stucco, clay roofs, lanterns.
   ERA_2: {
@@ -82,6 +93,7 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     sky: { top: 0x6a8cc4, bottom: 0xffc27a },
     fog: { color: 0xf2b77e, density: 0.014 },
     ocean: { shallow: 0x2f97a0, deep: 0x1b4c6b, foam: 0xffe6c8, waveSpeed: 0.5, waveHeight: 0.1 },
+    music: { root: 57, scale: 'major' }, // A
   },
   // Stormy dusk, brass, copper, steam vents.
   ERA_3: {
@@ -96,6 +108,7 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     sky: { top: 0x272e3c, bottom: 0x6e6a78 },
     fog: { color: 0x5a5866, density: 0.02 },
     ocean: { shallow: 0x3b5a66, deep: 0x1e2e38, foam: 0xc8ccd4, waveSpeed: 1.0, waveHeight: 0.22 },
+    music: { root: 59, scale: 'minor' }, // B minor
   },
   // Starfield ocean, obsidian, crystal, aurora.
   ERA_4: {
@@ -110,5 +123,6 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     sky: { top: 0x060716, bottom: 0x2a1f4a },
     fog: { color: 0x1a1636, density: 0.016 },
     ocean: { shallow: 0x1c1c48, deep: 0x05050f, foam: 0x9cf6ff, waveSpeed: 0.35, waveHeight: 0.08 },
+    music: { root: 66, scale: 'major' }, // F#
   },
 };

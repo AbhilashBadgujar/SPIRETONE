@@ -25,6 +25,14 @@ const POP_SPACING = 0.45;
 const POP_MIN_GAP = 2.5;
 /** Keep some floaters free for drop feedback. */
 const POP_RESERVE = 8;
+/** Beyond this many new bridges in one drop, show a single "×N" tag. */
+const MAX_BRIDGE_TAGS = 2;
+
+/** What the HUD needs from the audio layer. */
+export interface MuteControl {
+  readonly muted: boolean;
+  toggleMute(): void;
+}
 
 class Rolling {
   private value = Number.NaN;
@@ -76,6 +84,7 @@ export class Hud {
   constructor(
     private readonly game: Game,
     root: HTMLElement,
+    sound?: MuteControl,
   ) {
     const top = document.createElement('div');
     top.className = 'hud-top';
@@ -100,8 +109,26 @@ export class Hud {
       <div class="hud-meta">
         <div class="pill shards" data-tip="Aether Shards">${ICONS.shard}<span class="shard-value">0</span></div>
         <div class="era-badge" data-tip=""><span>I</span></div>
+        <button class="pill mute" type="button" tabindex="-1" data-tip="Sound" aria-label="Toggle sound"></button>
       </div>`;
     root.appendChild(top);
+
+    const mute = top.querySelector<HTMLButtonElement>('.mute')!;
+    if (sound) {
+      const paint = () => {
+        mute.innerHTML = sound.muted ? ICONS.soundOff : ICONS.soundOn;
+        mute.classList.toggle('off', sound.muted);
+      };
+      paint();
+      // pointerdown + preventDefault keeps focus off the button, so Space still drops.
+      mute.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        sound.toggleMute();
+        paint();
+      });
+    } else {
+      mute.remove();
+    }
 
     const cost = document.createElement('div');
     cost.className = 'cost-chip';
@@ -200,12 +227,17 @@ export class Hud {
       for (const c of outcome.goldenRolled) {
         this.floaters.at(this.game.columnAnchor(c, this.anchor), `${ICONS.golden}×${k.K_M_GOLDEN}`, 'tag');
       }
-      for (const e of outcome.newBridges) {
-        const edge = grid.edges[e];
-        this.game.columnAnchor(edge.a, this.anchor);
-        this.game.columnAnchor(edge.b, this.anchorB);
-        this.anchor.lerp(this.anchorB, 0.5);
-        this.floaters.at(this.anchor, `${ICONS.bridge}+${Math.round(k.K_M_BRIDGE * 100)}%`, 'tag');
+      if (outcome.newBridges.length > MAX_BRIDGE_TAGS) {
+        // Many at once (a cascade): one summary tag instead of a wall of them.
+        this.floaters.at(this.game.columnAnchor(column, this.anchor), `${ICONS.bridge}×${outcome.newBridges.length}`, 'tag');
+      } else {
+        for (const e of outcome.newBridges) {
+          const edge = grid.edges[e];
+          this.game.columnAnchor(edge.a, this.anchor);
+          this.game.columnAnchor(edge.b, this.anchorB);
+          this.anchor.lerp(this.anchorB, 0.5);
+          this.floaters.at(this.anchor, `${ICONS.bridge}+${Math.round(k.K_M_BRIDGE * 100)}%`, 'tag');
+        }
       }
       if (!outcome.newTypes.includes('ST_PLAZA')) {
         for (const group of outcome.newPlazas) {

@@ -4,6 +4,7 @@ import { ERA_IDS, type EraIndex } from '../data/ids';
 import { CursorView, type CursorState } from '../render/cursor-view';
 import { Gulls } from '../render/gulls';
 import { IslandView } from '../render/island-view';
+import { Juice } from '../render/juice';
 import { LAYOUT, columnAngle, columnTopY, columnX, columnZ } from '../render/layout';
 import { Ocean } from '../render/ocean';
 import { Stage } from '../render/scene';
@@ -50,6 +51,7 @@ export class Game {
   private readonly cursorView: CursorView;
   private readonly ocean = new Ocean();
   private readonly gulls = new Gulls();
+  private readonly juice: Juice;
   private readonly orbit: OrbitCursor;
 
   private readonly raycaster = new Raycaster();
@@ -88,10 +90,12 @@ export class Game {
     this.orbit = new OrbitCursor(grid);
     this.stage.scene.add(this.ocean.water, this.gulls.mesh);
     this.stage.turntable.add(this.view.root, this.cursorView.root);
+    this.juice = new Juice(grid, this.view, this.stage.turntable, this.events, () => this.state.run.island);
 
     this.era = state.run.island.era;
     this.applyEra();
     this.refreshIsland();
+    this.juice.reset(state.run.evaluation);
     this.mode = mode;
     this.orbit.reset(this.cursorContext());
   }
@@ -199,6 +203,8 @@ export class Game {
     const c = this.column;
     this.cursorView.setTarget(c, this.state.run.island, this.cursorState(c), isSmart(this.previewAt(c)));
     this.cursorView.update(dt, this.time);
+    this.view.update(dt, this.time);
+    this.juice.update(dt, this.time);
     this.ocean.update(this.time);
     this.gulls.update(this.time);
 
@@ -240,6 +246,7 @@ export class Game {
       this.applyEra();
     }
     this.refreshIsland();
+    this.juice.reset(this.state.run.evaluation);
     this.selected = 0;
     this.orbit.reset(this.cursorContext());
     this.events.emit('ascend', { shards });
@@ -294,6 +301,7 @@ export class Game {
     this.stage.applyPreset(preset);
     this.ocean.applyPreset(preset);
     this.view.applyPreset(preset);
+    this.juice.applyPreset(preset);
   }
 }
 

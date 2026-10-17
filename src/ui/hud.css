@@ -260,6 +260,23 @@ canvas {
   font-weight: 900;
 }
 
+.mute {
+  padding: 9px;
+  border-radius: 50%;
+  color: var(--hud-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mute svg {
+  width: 20px;
+  height: 20px;
+}
+
+.mute.off {
+  color: var(--hud-dim);
+}
+
 /* --- Cursor cost chip ---------------------------------------------------- */
 
 .cost-chip {

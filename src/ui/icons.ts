@@ -29,6 +29,12 @@ export const ICONS = {
     <path d="M4.5 21a7.5 7.5 0 0 1 15 0" fill="none" stroke="currentColor" stroke-width="2.4" opacity=".6"/>
     <path d="M4 5v4M20 5v4M12 5v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`),
   golden: svg(`<path d="m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5-4.8-4.6 6.6-.9z" fill="currentColor"/>`),
+  soundOn: svg(`
+    <path d="M3.5 9h4L13 4.5v15L7.5 15h-4z" fill="currentColor"/>
+    <path d="M16.2 8.6a5 5 0 0 1 0 6.8M18.8 6a8.6 8.6 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`),
+  soundOff: svg(`
+    <path d="M3.5 9h4L13 4.5v15L7.5 15h-4z" fill="currentColor"/>
+    <path d="m16.5 9.5 5 5m0-5-5 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`),
   lock: svg(`
     <path d="M7.5 11V8a4.5 4.5 0 0 1 9 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/>
     <rect x="5" y="11" width="14" height="10" rx="2.5" fill="currentColor"/>`),

@@ -1,3 +1,4 @@
+import { Sound } from './audio/sound';
 import { DEFAULT_CONSTANTS } from './data/constants';
 import type { EraIndex } from './data/ids';
 import { demoIsland } from './dev/demo';
@@ -27,7 +28,8 @@ if (demo >= 1 && demo <= 4) {
 const mode = params.get('mode') === 'direct' ? 'direct' : 'orbit';
 
 const game = new Game(grid, state, document.getElementById('app')!, mode);
-const hud = new Hud(game, document.getElementById('hud')!);
+const sound = new Sound(game);
+const hud = new Hud(game, document.getElementById('hud')!, sound);
 const input = new Input(game, game.stage.renderer.domElement);
 const perf = params.has('perf') ? createPerfOverlay(game.stage.renderer, document.body) : null;
 
@@ -39,7 +41,8 @@ game.stage.renderer.setAnimationLoop((now) => {
   input.poll(dt);
   game.update(dt);
   hud.update(dt);
+  sound.update();
   perf?.(dt);
 });
 
-if (import.meta.env.DEV) Object.assign(window, { spiretone: { grid, state, game, hud } });
+if (import.meta.env.DEV) Object.assign(window, { spiretone: { grid, state, game, hud, sound } });
