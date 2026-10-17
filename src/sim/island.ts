@@ -9,6 +9,12 @@ export interface Island {
   era: EraIndex;
   heights: number[];
   inPlaza: boolean[];
+  /**
+   * Anchor (r, i) of each plaza group, in formation order. The group is
+   * (r, i), (r, i+1), (r+1, i), (r+1, i+1). inPlaza alone can't recover
+   * groupings once plazas sit side by side.
+   */
+  plazas: ColumnId[];
   golden: boolean[];
   /** n in block_cost. Cascade blocks are free and don't count (GDD §6). */
   paidBlocks: number;
@@ -45,6 +51,7 @@ export function createIsland(grid: Grid, era: EraIndex): Island {
     era,
     heights: new Array<number>(n).fill(0),
     inPlaza: new Array<boolean>(n).fill(false),
+    plazas: [],
     golden: new Array<boolean>(n).fill(false),
     paidBlocks: 0,
     discovered: [],
@@ -56,6 +63,7 @@ export function cloneIsland(island: Island): Island {
     era: island.era,
     heights: island.heights.slice(),
     inPlaza: island.inPlaza.slice(),
+    plazas: island.plazas.slice(),
     golden: island.golden.slice(),
     paidBlocks: island.paidBlocks,
     discovered: island.discovered.slice(),

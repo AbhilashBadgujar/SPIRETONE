@@ -61,20 +61,25 @@ const EMPTY_COLUMN: Readonly<ColumnEval> = Object.freeze({
   yield: 0,
 });
 
-/** Greedy plaza scan in (ring, index) order. Mutates island.inPlaza; returns the groups it formed. */
+/** The 4 columns of the plaza anchored at (r, i): (r, i), (r, i+1), (r+1, i), (r+1, i+1). */
+export function plazaGroup(grid: Grid, anchor: ColumnId): ColumnId[] {
+  const { k } = grid;
+  const r = grid.ring[anchor];
+  const i = grid.index[anchor];
+  return [columnId(k, r, i), columnId(k, r, i + 1), columnId(k, r + 1, i), columnId(k, r + 1, i + 1)];
+}
+
+/** Greedy plaza scan in (ring, index) order. Mutates island.inPlaza/plazas; returns the groups it formed. */
 export function rebuildPlazas(grid: Grid, island: Island): ColumnId[][] {
   const { k } = grid;
   const formed: ColumnId[][] = [];
   for (let r = 0; r < k.K_RINGS - 1; r++) {
     for (let i = 0; i < k.K_INDICES; i++) {
-      const group = [
-        columnId(k, r, i),
-        columnId(k, r, i + 1),
-        columnId(k, r + 1, i),
-        columnId(k, r + 1, i + 1),
-      ];
+      const anchor = columnId(k, r, i);
+      const group = plazaGroup(grid, anchor);
       if (group.every((c) => island.heights[c] === k.K_PLAZA_HEIGHT && !island.inPlaza[c])) {
         for (const c of group) island.inPlaza[c] = true;
+        island.plazas.push(anchor);
         formed.push(group);
       }
     }

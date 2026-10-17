@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluate, rebuildPlazas } from '../src/sim/evaluate';
+import { evaluate, plazaGroup, rebuildPlazas } from '../src/sim/evaluate';
 import { evalWith, grid, id, islandWith } from './helpers';
 
 describe('GDD §3 structure resolution', () => {
@@ -44,6 +44,19 @@ describe('GDD §3 plazas', () => {
   it('ignores columns that are not exactly height 1', () => {
     const { island } = evalWith(0, { '0,0': 2, '0,1': 1, '1,0': 1, '1,1': 1 });
     expect(island.inPlaza.some(Boolean)).toBe(false);
+  });
+
+  it('records each plaza anchor so side-by-side plazas keep their own groups', () => {
+    // Plaza at i=1 forms first; the one wrapping 11 -> 0 forms later. The flags
+    // alone would also fit a group anchored at i=0.
+    const island = islandWith(0, { '0,1': 1, '0,2': 1, '1,1': 1, '1,2': 1 });
+    for (const key of ['0,0', '1,0', '0,11', '1,11']) {
+      const [r, i] = key.split(',').map(Number);
+      island.heights[id(r, i)] = 1;
+    }
+    rebuildPlazas(grid, island);
+    expect(island.plazas).toEqual([id(0, 1), id(0, 11)]);
+    expect(plazaGroup(grid, id(0, 11))).toEqual([id(0, 11), id(0, 0), id(1, 11), id(1, 0)]);
   });
 
   it('never re-forms or breaks on a later scan', () => {
