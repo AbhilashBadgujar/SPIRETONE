@@ -808,6 +808,104 @@ canvas {
   margin-left: 6px;
 }
 
+.pause-panels {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 100%;
+}
+
+/* Settings: icon buttons; the shelf caption names whatever is hovered or tapped. */
+.settings {
+  display: flex;
+  gap: 12px;
+}
+
+.setting {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid var(--hud-glass-edge);
+  border-radius: 50%;
+  color: var(--hud-ink);
+  background: radial-gradient(circle at 50% 30%, var(--hud-core-hi), var(--hud-core));
+  box-shadow: var(--hud-shadow), inset 0 2px 0 rgba(255, 255, 255, 0.16);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s;
+}
+
+.setting:active {
+  transform: scale(0.92);
+}
+
+.setting svg {
+  width: 24px;
+  height: 24px;
+}
+
+.setting.off {
+  color: var(--hud-dim);
+}
+
+/* Quality bars light up to the chosen level; Auto shows an "A". */
+.setting[data-k='quality'] .q1,
+.setting[data-k='quality'] .q2,
+.setting[data-k='quality'] .q3 {
+  opacity: 0.25;
+}
+
+.setting[data-q='low'] .q1,
+.setting[data-q='auto'] .q1,
+.setting[data-q='auto'] .q2,
+.setting[data-q='high'] .q1,
+.setting[data-q='high'] .q2,
+.setting[data-q='high'] .q3 {
+  opacity: 1;
+}
+
+.setting-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  color: #3a2205;
+  background: var(--hud-gold);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.setting-badge:empty {
+  display: none;
+}
+
+/* Hold to reset: a red ring fills around the button (--p from 0 to 1). */
+.setting-reset {
+  --p: 0;
+  color: #ffb3b3;
+}
+
+.setting-reset::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  background: conic-gradient(var(--hud-danger) calc(var(--p) * 360deg), transparent 0);
+  mask: radial-gradient(circle, transparent 29px, #000 30px);
+  -webkit-mask: radial-gradient(circle, transparent 29px, #000 30px);
+  pointer-events: none;
+}
+
 /* Trophy shelf: every achievement as a tile, won ones in gold. */
 .trophies {
   display: flex;
@@ -1024,6 +1122,34 @@ canvas {
 }
 
 /* --- Small screens ------------------------------------------------------- */
+
+/* Short landscape screens: play button beside the panels, not above them. */
+@media (max-height: 560px) and (min-width: 621px) {
+  .pause-veil {
+    flex-direction: row;
+    gap: 28px;
+  }
+
+  .pause-play {
+    width: 88px;
+    height: 88px;
+  }
+
+  .trophies {
+    padding: 10px 14px 6px;
+    gap: 8px;
+  }
+
+  .trophies-grid {
+    grid-template-columns: repeat(9, 32px);
+    gap: 5px;
+  }
+
+  .trophy {
+    width: 32px;
+    height: 32px;
+  }
+}
 
 @media (max-width: 620px) {
   /* Under the two-row top bar. */

@@ -13,6 +13,7 @@ import {
   WebGLRenderer,
 } from 'three';
 import type { EraPreset } from '../data/eras';
+import type { RenderLevel } from '../game/quality';
 import { LAYOUT, columnTopY } from './layout';
 
 // Renderer, lights, sky and the fixed camera (GDD §1: fixed, framed on the
@@ -113,6 +114,18 @@ export class Stage {
     this.sun.color.setHex(p.sun.color);
     this.sun.intensity = p.sun.intensity;
     this.sun.position.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(25);
+  }
+
+  /** Pixel ratio and shadow resolution (game/quality.ts). */
+  applyQuality(level: RenderLevel): void {
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, level.pixelRatio));
+    const shadow = this.sun.shadow;
+    if (shadow.mapSize.x !== level.shadowSize) {
+      shadow.mapSize.set(level.shadowSize, level.shadowSize);
+      // The map is allocated at its first render; drop it so the next one uses the new size.
+      shadow.map?.dispose();
+      shadow.map = null;
+    }
   }
 
   /** Re-aim the dolly so the island and its tallest columns fit. */

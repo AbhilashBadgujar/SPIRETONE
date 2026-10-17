@@ -3,7 +3,8 @@ import { ACH_BY_ID, ACHIEVEMENTS, MAX_GAMERSCORE, type AchId } from '../data/ach
 import { MODIFIER_MIN_ERA } from '../data/constants';
 import { ERA_PRESETS } from '../data/eras';
 import { ERA_IDS, HARMONY_TYPES, STRUCTURE_NAMES, type EraIndex, type StructureId } from '../data/ids';
-import type { Game } from '../game/game';
+import type { ControlMode, Game } from '../game/game';
+import type { Quality } from '../game/settings';
 import { formatNumber } from '../lib/format';
 import type { GameEvents } from '../game/events';
 import { gamerscore } from '../sim/achievements';
@@ -40,6 +41,19 @@ const POP_MIN_GAP = 2.5;
 const POP_RESERVE = 8;
 /** Beyond this many new bridges in one drop, show a single "×N" tag. */
 const MAX_BRIDGE_TAGS = 2;
+
+/** Seconds the reset button must be held. */
+const RESET_HOLD = 1.6;
+
+/** The pause screen's settings (GDD §4 "Toggle mode: Settings"). */
+export interface SettingsControl {
+  readonly mode: ControlMode;
+  toggleMode(): void;
+  readonly quality: Quality;
+  cycleQuality(): void;
+  /** Absent where there is nothing to reset (demo islands). */
+  resetProgress?: () => void;
+}
 
 /** What the HUD needs from the audio layer. */
 export interface HudSound {
@@ -94,6 +108,10 @@ export class Hud {
   private readonly veil: HTMLDivElement;
   private readonly toasts: Toasts;
   private readonly trophies: { score: HTMLElement; tiles: Map<AchId, HTMLElement>; caption: HTMLElement };
+  private readonly settingsEl: HTMLElement | null;
+  private paintSound: () => void = () => {};
+  /** Seconds the reset button has been held, or null when it isn't. */
+  private resetHeld: number | null = null;
   private readonly treeBtn: HTMLButtonElement;
   private treeKey = '';
   /** Drop feedback waiting for a worker Gull to let go of its block. */
@@ -113,7 +131,8 @@ export class Hud {
   constructor(
     private readonly game: Game,
     private readonly root: HTMLElement,
-    sound?: HudSound,
+    private readonly sound?: HudSound,
+    private readonly settings?: SettingsControl,
   ) {
     const top = document.createElement('div');
     top.className = 'hud-top';
@@ -149,11 +168,15 @@ export class Hud {
         mute.classList.toggle('off', sound.muted);
       };
       paint();
+      this.paintSound = () => {
+        paint();
+        this.paintSettings();
+      };
       // pointerdown + preventDefault keeps focus off the button, so Space still drops.
       mute.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         sound.toggleMute();
-        paint();
+        this.paintSound();
       });
     } else {
       mute.remove();
@@ -213,12 +236,20 @@ export class Hud {
     this.veil.hidden = true;
     this.veil.innerHTML = `
       <div class="pause-play" role="button" aria-label="Resume">${ICONS.play}</div>
+      <div class="pause-panels">
+      <div class="settings">
+        <button class="setting" type="button" tabindex="-1" data-k="mode"></button>
+        <button class="setting" type="button" tabindex="-1" data-k="quality">${ICONS.quality}<i class="setting-badge"></i></button>
+        <button class="setting" type="button" tabindex="-1" data-k="sound"></button>
+        <button class="setting setting-reset" type="button" tabindex="-1" data-k="reset">${ICONS.reset}</button>
+      </div>
       <div class="trophies">
         <div class="trophies-head">${ICONS.trophy}<span class="trophies-score">0</span><small>/${MAX_GAMERSCORE}</small></div>
         <div class="trophies-grid">${ACHIEVEMENTS.map(
           (a) => `<span class="trophy" data-id="${a.id}" aria-label="${a.name}">${ACHIEVEMENT_ICONS[a.id]}</span>`,
         ).join('')}</div>
         <div class="trophies-caption">&nbsp;</div>
+      </div>
       </div>`;
     this.veil.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -241,6 +272,8 @@ export class Hud {
       describe(e);
     });
     shelf.addEventListener('pointerover', describe);
+    this.settingsEl = this.veil.querySelector<HTMLElement>('.settings');
+    this.wireSettings(this.settingsEl!);
     root.appendChild(this.veil);
 
     this.toasts = new Toasts(root, () => sound?.chime());
@@ -292,6 +325,7 @@ export class Hud {
     // Toasts wait while the Ascension, its Shards card or the era card is up.
     const busy = this.game.isAscending || this.pendingShards > 0 || this.eraToReveal !== null || this.eraCard.showing;
     this.toasts.update(dt, busy);
+    this.updateReset(dt);
     this.renderTreeButton();
     this.tree.update();
   }
@@ -355,11 +389,91 @@ export class Hud {
 
     events.on('pause', ({ reason }) => {
       this.veil.hidden = reason !== 'menu';
-      if (reason === 'menu') this.renderTrophies();
+      if (reason === 'menu') {
+        this.renderTrophies();
+        this.paintSettings();
+      }
       if (reason === 'tree') this.treeBtn.classList.remove('beckon');
     });
     events.on('achievement', ({ id }) => this.toasts.push(id));
     events.on('resume', () => (this.veil.hidden = true));
+  }
+
+  /** Settings row on the pause screen: icon buttons, explained in the shared caption. */
+  private wireSettings(row: HTMLElement): void {
+    const settings = this.settings;
+    const sound = this.sound;
+    if (!settings) {
+      row.remove();
+      return;
+    }
+    if (!settings.resetProgress) row.querySelector('[data-k="reset"]')!.remove();
+    if (!sound) row.querySelector('[data-k="sound"]')!.remove();
+
+    const keyOf = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>('.setting')?.dataset.k;
+    row.addEventListener('pointerdown', (e) => {
+      // Never resume, never take focus (Space would click the button).
+      e.stopPropagation();
+      e.preventDefault();
+      const k = keyOf(e);
+      if (k === 'mode') settings.toggleMode();
+      else if (k === 'quality') settings.cycleQuality();
+      else if (k === 'sound' && sound) {
+        sound.toggleMute();
+        this.paintSound();
+      } else if (k === 'reset') this.resetHeld = 0;
+      if (k) this.describeSetting(k);
+      this.paintSettings();
+    });
+    const release = () => {
+      this.resetHeld = null;
+      row.querySelector<HTMLElement>('[data-k="reset"]')?.style.setProperty('--p', '0');
+    };
+    row.addEventListener('pointerup', release);
+    row.addEventListener('pointerleave', release);
+    row.addEventListener('pointercancel', release);
+    row.addEventListener('pointerover', (e) => {
+      const k = keyOf(e);
+      if (k) this.describeSetting(k);
+    });
+  }
+
+  private paintSettings(): void {
+    const row = this.settingsEl;
+    const settings = this.settings;
+    if (!row || !settings) return;
+    row.querySelector('[data-k="mode"]')!.innerHTML = settings.mode === 'orbit' ? ICONS.orbit : ICONS.direct;
+    const q = row.querySelector<HTMLElement>('[data-k="quality"]')!;
+    q.dataset.q = settings.quality;
+    q.querySelector('.setting-badge')!.textContent = settings.quality === 'auto' ? 'A' : '';
+    const s = row.querySelector<HTMLElement>('[data-k="sound"]');
+    if (s && this.sound) {
+      s.innerHTML = this.sound.muted ? ICONS.soundOff : ICONS.soundOn;
+      s.classList.toggle('off', this.sound.muted);
+    }
+  }
+
+  private describeSetting(k: string): void {
+    const settings = this.settings!;
+    const text: Record<string, string> = {
+      mode: settings.mode === 'orbit' ? 'Orbit cursor' : 'Direct control',
+      quality: `Quality · ${settings.quality[0].toUpperCase()}${settings.quality.slice(1)}`,
+      sound: this.sound?.muted ? 'Sound off' : 'Sound on',
+      reset: 'Hold to erase all progress',
+    };
+    this.trophies.caption.textContent = text[k] ?? '';
+  }
+
+  /** The reset button fills a ring while held, then erases the save. */
+  private updateReset(dt: number): void {
+    if (this.resetHeld === null || !this.settings?.resetProgress) return;
+    this.resetHeld += dt;
+    const p = Math.min(1, this.resetHeld / RESET_HOLD);
+    this.settingsEl?.querySelector<HTMLElement>('[data-k="reset"]')?.style.setProperty('--p', p.toFixed(3));
+    if (p >= 1) {
+      this.resetHeld = null;
+      this.settings.resetProgress();
+    }
   }
 
   private renderTrophies(): void {

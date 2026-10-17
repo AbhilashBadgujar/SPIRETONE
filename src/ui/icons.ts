@@ -80,6 +80,18 @@ export const ICONS = {
     <path d="M10.2 5.5h3.6v4.5h-3.6z" fill="currentColor"/>
     <path d="M4 12h16v2.4H4z" fill="currentColor"/>
     <path d="M5.5 14.4v3.4M9.8 14.4v3.4M14.2 14.4v3.4M18.5 14.4v3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`),
+  orbit: svg(`
+    <path d="M19.5 9.5A8 8 0 1 0 20 14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="m21.6 5.6-1.7 4.4-4.5-1.3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="12" cy="12" r="3.2" fill="currentColor"/>`),
+  direct: svg(`<path d="M5.5 2.8 19 10.3l-6 1.6-2.4 6.4z" fill="currentColor"/><path d="m13.2 12.2 5.3 5.3" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" opacity=".6"/>`),
+  quality: svg(`
+    <rect x="3.5" y="14" width="4" height="6.5" rx="1.2" fill="currentColor" class="q1"/>
+    <rect x="10" y="9" width="4" height="11.5" rx="1.2" fill="currentColor" class="q2"/>
+    <rect x="16.5" y="3.5" width="4" height="17" rx="1.2" fill="currentColor" class="q3"/>`),
+  reset: svg(`
+    <path d="M5.2 13.5A7 7 0 1 0 7 6.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M4.2 2.8v5.4h5.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`),
   flag: svg(`
     <path d="M5.5 3v18.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
     <path d="M6.5 3.8h12l-3 4.3 3 4.3h-12z" fill="currentColor"/>`),
