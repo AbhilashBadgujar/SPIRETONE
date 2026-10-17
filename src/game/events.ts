@@ -6,7 +6,11 @@ import type { BuyRejection } from '../sim/tree';
 // Gameplay events for HUD (Step 4) and juice/audio (Step 5) to react to.
 
 export interface GameEvents {
-  drop: { column: ColumnId; cost: number; outcome: DropOutcome; incomeBefore: number; by: 'player' | 'gull' };
+  /**
+   * A block landed in the sim. `delay`: seconds before it starts to fall on
+   * screen (a worker Gull still carrying it in); 0 for the player's drops.
+   */
+  drop: { column: ColumnId; cost: number; outcome: DropOutcome; incomeBefore: number; by: 'player' | 'gull'; delay: number };
   reject: { column: ColumnId; reason: DropRejection | 'CANT_AFFORD' };
   /** Ascend held below the fill threshold. */
   ascendBlocked: { remaining: number };

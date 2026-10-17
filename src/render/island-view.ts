@@ -42,7 +42,8 @@ const GOLD = new Color(0xffc83c);
 
 /** Seconds from a drop to the block landing; audio and particles sync to it. */
 export const DROP_FALL_TIME = 0.16;
-const FALL_HEIGHT = 2.6;
+/** How far above its resting place a dropped block starts falling. */
+export const DROP_FALL_HEIGHT = 2.6;
 const SETTLE_TIME = 0.45;
 
 /** Seconds a drop animates in total. */
@@ -53,7 +54,7 @@ export function dropPose(t: number): { dy: number; sy: number } | null {
   if (t < 0) return null;
   if (t < DROP_FALL_TIME) {
     const u = t / DROP_FALL_TIME;
-    return { dy: FALL_HEIGHT * (1 - u * u), sy: 1 + 0.12 * u };
+    return { dy: DROP_FALL_HEIGHT * (1 - u * u), sy: 1 + 0.12 * u };
   }
   const u = t - DROP_FALL_TIME;
   return { dy: 0, sy: 1 - 0.3 * Math.exp(-u * 10) * Math.cos(u * 24) };

@@ -16,6 +16,8 @@ import type { ColumnId } from '../sim/grid';
 const SCALES = { major: [0, 2, 4, 7, 9], minor: [0, 3, 5, 7, 10] } as const;
 const MASTER = 0.55;
 const MUTE_KEY = 'spiretone.muted';
+/** Seconds between gull calls, however busy the flock is. */
+const CHIRP_GAP = 2.5;
 
 type Music = EraPreset['music'];
 
@@ -46,6 +48,7 @@ export class Sound {
   private noise: AudioBuffer | null = null;
   private charge: { osc: OscillatorNode; gain: GainNode } | null = null;
   private mutedFlag = readMuted();
+  private lastChirp = -Infinity;
 
   constructor(private readonly game: Game) {
     // Browsers only allow audio after a gesture. Capture phase runs this
@@ -130,15 +133,22 @@ export class Sound {
   private listen(): void {
     const { events } = this.game;
 
-    events.on('drop', ({ outcome }) => {
+    events.on('drop', ({ outcome, by, delay }) => {
       const ctx = this.ctx;
       if (!ctx) return;
-      const t0 = ctx.currentTime + DROP_FALL_TIME;
+      const release = ctx.currentTime + delay;
+      const t0 = release + DROP_FALL_TIME;
+      // Gulls play the same melody a step behind the player's own drops.
+      const level = by === 'gull' ? 0.2 : 0.32;
+      if (by === 'gull' && release - this.lastChirp > CHIRP_GAP) {
+        this.lastChirp = release;
+        this.chirp(release - 0.05, this.panFor(outcome.placed[0]));
+      }
       outcome.placed.forEach((c, i) => {
         const when = t0 + i * CASCADE_STAGGER;
         const pan = this.panFor(c);
         this.thud(when, pan);
-        this.pluck(this.noteFor(c), when, 0.32, pan);
+        this.pluck(this.noteFor(c), when, level, pan);
       });
       const land = t0 + 0.06;
       if (outcome.newTypes.length) this.arpeggio([0, 2, 4, 7], land, 0.07, 0.22);
@@ -312,6 +322,32 @@ export class Sound {
     body.connect(bg).connect(panner);
     body.start(when);
     body.stop(when + 0.16);
+  }
+
+  /** A gull's two-note call as it lets go of a block. */
+  private chirp(when: number, pan: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+    panner.connect(this.master);
+    for (const [start, from, to] of [
+      [0, 2300, 3100],
+      [0.11, 2600, 1900],
+    ] as const) {
+      const t = when + start;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(from, t);
+      osc.frequency.exponentialRampToValueAtTime(to, t + 0.08);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.035, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      osc.connect(g).connect(panner);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    }
   }
 
   /** GDD §2: rejected drops get a soft error sound. */

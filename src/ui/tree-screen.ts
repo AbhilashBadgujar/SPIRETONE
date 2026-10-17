@@ -95,7 +95,7 @@ function effectLine(e: NodeEffect): { chip: string; hint: string } {
     case 'era':
       return { chip: `<b class="hex">${ROMAN[e.era]}</b>`, hint: 'New era · next island' };
     case 'typeYield':
-      return { chip: `${STRUCTURE_ICONS[e.structure]}+${e.add}`, hint: `${STRUCTURE_NAMES[e.structure]} yield` };
+      return { chip: `${STRUCTURE_ICONS[e.structure]}+${pct(e.add)}`, hint: `${STRUCTURE_NAMES[e.structure]} yield` };
     case 'incomeMult':
       return { chip: `${ICONS.rate}×${e.mult}`, hint: 'All income' };
     case 'golden':

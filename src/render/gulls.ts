@@ -65,7 +65,7 @@ export class Gulls {
   }
 }
 
-function gullGeometry(): BufferGeometry {
+export function gullGeometry(): BufferGeometry {
   const body = new ConeGeometry(0.05, 0.32, 4).rotateX(Math.PI / 2).toNonIndexed();
   body.deleteAttribute('uv');
   const wings = new BufferGeometry();

@@ -11,8 +11,9 @@ import { LAYOUT, columnTopY, columnX, columnZ } from './layout';
 import { Particles } from './particles';
 
 // Visual feedback for gameplay events: drop-in animation, landing dust,
-// formation sparkles, bridge sparks, lighthouse beams, crystal pulses.
-// Everything lands on DROP_FALL_TIME so it lines up with the sound.
+// formation sparkles, bridge sparks, lighthouse beams, crystal pulses,
+// golden glints. Everything lands on DROP_FALL_TIME (after any Gull carry
+// delay) so it lines up with the sound.
 
 /** Seconds between Era IV cascade blocks. Audio uses the same stagger. */
 export const CASCADE_STAGGER = 0.12;
@@ -21,6 +22,8 @@ const GOLD = 0xffd25e;
 const MAX_BRIDGE_BURSTS = 4;
 /** Sparkle bursts shed while the island rises (one every 0.08 s). */
 const ASCEND_SPARKLES = 15;
+/** Seconds between idle glints off a golden column. */
+const GLINT_EVERY = 0.55;
 
 interface Timer {
   t: number;
@@ -37,6 +40,7 @@ export class Juice {
   private readonly foamColor = new Color();
   private readonly at = new Vector3();
   private readonly atB = new Vector3();
+  private glintClock = 0;
 
   constructor(
     private readonly grid: Grid,
@@ -49,17 +53,17 @@ export class Juice {
     turntable.add(...this.particles.meshes, this.beams.mesh);
     this.prev = new Array<StructureId>(grid.columnCount).fill('ST_EMPTY');
 
-    events.on('drop', ({ outcome }) => {
+    events.on('drop', ({ outcome, delay }) => {
       const now = outcome.evaluation.columns.map((col) => col.structure);
       const before = this.prev;
       this.prev = now;
       outcome.placed.forEach((c, i) => {
-        const delay = i * CASCADE_STAGGER;
-        this.view.dropIn(c, delay);
-        this.after(delay + DROP_FALL_TIME, () => this.land(c, before[c] !== now[c] && now[c] !== 'ST_EMPTY'));
+        const start = delay + i * CASCADE_STAGGER;
+        this.view.dropIn(c, start);
+        this.after(start + DROP_FALL_TIME, () => this.land(c, before[c] !== now[c] && now[c] !== 'ST_EMPTY'));
       });
 
-      this.after(DROP_FALL_TIME, () => {
+      this.after(delay + DROP_FALL_TIME, () => {
         const c = outcome.placed[0];
         if (outcome.newTypes.length) {
           this.view.pulseCrystal(0.6);
@@ -153,9 +157,9 @@ export class Juice {
       }
     });
 
-    // The new island hits the water: a splash ring round the rim and a crystal flare.
     events.on('buy', () => this.view.pulseCrystal(0.5));
 
+    // The new island hits the water: a splash ring round the rim and a crystal flare.
     events.on('ascendLand', () => {
       this.view.pulseCrystal(0.7);
       this.particles.dust.emit({
@@ -203,8 +207,33 @@ export class Juice {
         timer.fn();
       }
     }
+    this.glint(dt);
     this.particles.update(dt);
     this.beams.update(time, this.view.lampPoints);
+  }
+
+  /** Golden columns (MOD_GOLDEN) shed a few motes now and then, so they read at a glance. */
+  private glint(dt: number): void {
+    this.glintClock -= dt;
+    if (this.glintClock > 0) return;
+    this.glintClock = GLINT_EVERY;
+    const island = this.island();
+    const golden: ColumnId[] = [];
+    for (let c = 0; c < island.heights.length; c++) if (island.golden[c] && island.heights[c] > 0) golden.push(c);
+    if (golden.length === 0) return;
+    const c = golden[Math.floor(Math.random() * golden.length)];
+    // Anywhere up the column's side, not only its roof.
+    const y = LAYOUT.groundY + Math.random() * Math.max(LAYOUT.blockHeight, island.heights[c] * LAYOUT.blockHeight);
+    this.particles.sparks.emit({
+      origin: this.at.set(columnX(this.grid, c), y, columnZ(this.grid, c)),
+      count: 3,
+      color: GOLD,
+      shape: 'fountain',
+      speed: [0.25, 0.7],
+      size: [0.02, 0.04],
+      life: [0.7, 1.1],
+      gravity: -0.6,
+    });
   }
 
   private after(seconds: number, fn: () => void): void {

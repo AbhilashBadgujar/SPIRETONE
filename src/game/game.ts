@@ -3,8 +3,9 @@ import { ERA_PRESETS } from '../data/eras';
 import { ERA_IDS, type EraIndex } from '../data/ids';
 import type { NodeId } from '../data/tree';
 import { CursorView, type CursorState } from '../render/cursor-view';
+import { Flock } from '../render/flock';
 import { Gulls } from '../render/gulls';
-import { IslandView } from '../render/island-view';
+import { DROP_FALL_HEIGHT, IslandView } from '../render/island-view';
 import { Juice } from '../render/juice';
 import { LAYOUT, columnAngle, columnTopY, columnX, columnZ } from '../render/layout';
 import { Ocean } from '../render/ocean';
@@ -54,6 +55,7 @@ const SURF_FADE_HEIGHT = 0.8;
 /** Headroom above a column top for HUD anchors, clear of roofs and lamps. */
 const ANCHOR_HEADROOM = 0.9;
 const _v = new Vector3();
+const _fall = new Vector3();
 
 export class Game {
   readonly events = new Emitter<GameEvents>();
@@ -63,6 +65,8 @@ export class Game {
   private readonly cursorView: CursorView;
   private readonly ocean = new Ocean();
   private readonly gulls = new Gulls();
+  /** Worker Gulls, one per owned Gull node. */
+  private readonly flock = new Flock();
   private readonly juice: Juice;
   private readonly orbit: OrbitCursor;
 
@@ -107,7 +111,7 @@ export class Game {
     this.cursorView = new CursorView(grid);
     this.orbit = new OrbitCursor(grid);
     this.stage.scene.add(this.ocean.water, this.gulls.mesh);
-    this.stage.turntable.add(this.view.root, this.cursorView.root);
+    this.stage.turntable.add(this.view.root, this.cursorView.root, this.flock.birds, this.flock.blocks);
     this.juice = new Juice(grid, this.view, this.stage.turntable, this.events, () => this.state.run.island);
 
     this.era = state.run.island.era;
@@ -138,6 +142,11 @@ export class Game {
 
   get pausedBy(): PauseReason | null {
     return this.pauseReason;
+  }
+
+  /** A held Drop is repeating (NODE_O3). */
+  get isRapidDropping(): boolean {
+    return this.dropHolds.size > 0 && !this.pauseReason && !this.ascension && unlocksFor(this.state.meta).rapidDrop;
   }
 
   get isAscending(): boolean {
@@ -235,13 +244,29 @@ export class Game {
       return;
     }
     this.cursorView.pop();
-    this.landed(c, attempt, incomeBefore, 'player');
+    this.landed(c, attempt, incomeBefore, 'player', 0);
   }
 
-  /** Shared tail of player and Gull drops. */
-  private landed(c: ColumnId, attempt: Extract<DropAttempt, { ok: true }>, incomeBefore: number, by: 'player' | 'gull'): void {
+  /** Shared tail of player and Gull drops. `delay`: seconds until the block starts to fall. */
+  private landed(
+    c: ColumnId,
+    attempt: Extract<DropAttempt, { ok: true }>,
+    incomeBefore: number,
+    by: 'player' | 'gull',
+    delay: number,
+  ): void {
     this.refreshIsland();
-    this.events.emit('drop', { column: c, cost: attempt.cost, outcome: attempt.outcome, incomeBefore, by });
+    this.events.emit('drop', { column: c, cost: attempt.cost, outcome: attempt.outcome, incomeBefore, by, delay });
+  }
+
+  /** A worker Gull carries the block in; it falls on its own if every bird is busy. */
+  private gullDrop(c: ColumnId, attempt: Extract<DropAttempt, { ok: true }>, incomeBefore: number): void {
+    const { island } = this.state.run;
+    // Where the column's new top starts its fall (IslandView.dropPose).
+    const base = island.inPlaza[c] ? LAYOUT.groundY : columnTopY(island.heights[c] - 1);
+    _fall.set(columnX(this.grid, c), base + DROP_FALL_HEIGHT, columnZ(this.grid, c));
+    const delay = this.flock.dispatch(_fall, columnAngle(this.grid, c)) ?? 0;
+    this.landed(c, attempt, incomeBefore, 'gull', delay);
   }
 
   select(c: ColumnId, source: 'pointer' | 'keys'): void {
@@ -280,7 +305,7 @@ export class Game {
       this.updateHold(dt);
       this.updateRapidDrop(dt);
       advance(this.grid, this.state, dt);
-      for (const g of advanceGulls(this.grid, this.state, dt)) this.landed(g.column, g.attempt, g.incomeBefore, 'gull');
+      for (const g of advanceGulls(this.grid, this.state, dt)) this.gullDrop(g.column, g.attempt, g.incomeBefore);
       this.updateTurntable(dt);
     }
 
@@ -291,6 +316,8 @@ export class Game {
     this.juice.update(dt, this.time);
     this.ocean.update(this.time);
     this.gulls.update(this.time);
+    this.flock.setCount(effectsOf(this.state.meta.nodes).gulls, this.time);
+    this.flock.update(dt, this.time);
 
     this.stage.update(dt);
     this.stage.render();
@@ -338,6 +365,8 @@ export class Game {
     const shards = shardsOnAscend(this.grid, run);
     this.ascension = { t: 0, shards, phase: 'rise' };
     this.cursorView.root.visible = false;
+    // The island is about to lift off under any bird still carrying a block.
+    this.flock.recall();
     this.events.emit('ascendStart', { shards });
   }
 
@@ -439,6 +468,7 @@ export class Game {
     this.ocean.applyPreset(preset);
     this.view.applyPreset(preset);
     this.juice.applyPreset(preset);
+    this.flock.applyPreset(preset);
   }
 }
 

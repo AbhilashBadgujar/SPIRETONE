@@ -328,6 +328,22 @@ canvas {
   filter: drop-shadow(0 0 4px rgba(255, 210, 94, 0.8));
 }
 
+/* Rapid drop (NODE_O3) repeating: a blinking fast-forward on the chip. */
+.cost-rapid {
+  display: none;
+  color: var(--hud-gold);
+}
+
+.cost-rapid svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cost-chip.rapid .cost-rapid {
+  display: block;
+  animation: rapid-blink 0.3s steps(2, jump-none) infinite;
+}
+
 .cost-meter {
   display: none;
   position: absolute;
@@ -827,6 +843,12 @@ canvas {
   80% { transform: translateX(2px); }
 }
 
+@keyframes rapid-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
 @keyframes chip-shake {
   0%, 100% { margin-left: 16px; }
   20% { margin-left: 9px; }
@@ -842,7 +864,8 @@ canvas {
   .ascend.shake,
   .cost-chip.shake,
   .type.landed,
-  .shards.pop {
+  .shards.pop,
+  .cost-chip.rapid .cost-rapid {
     animation: none;
   }
 }

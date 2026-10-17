@@ -3,6 +3,7 @@ import { ERA_PRESETS } from '../data/eras';
 import { ERA_IDS, HARMONY_TYPES, STRUCTURE_NAMES, type EraIndex, type StructureId } from '../data/ids';
 import type { Game } from '../game/game';
 import { formatNumber } from '../lib/format';
+import type { GameEvents } from '../game/events';
 import { ascendThreshold, totalBlocks } from '../sim/island';
 import { bonusesFor, canAscend, shardsOnAscend } from '../sim/run';
 import { AscendButton } from './ascend-button';
@@ -72,7 +73,7 @@ export class Hud {
   private readonly harmonyBar: HTMLElement;
   private readonly typeSlots = new Map<StructureId, HTMLElement>();
   private readonly eraBadge: HTMLElement;
-  private readonly cost: { el: HTMLElement; value: HTMLElement; preview: HTMLElement; meter: HTMLElement };
+  private readonly cost: { el: HTMLElement; value: HTMLElement; preview: HTMLElement; meter: HTMLElement; rapid: boolean };
   private readonly ascend: AscendButton;
   private readonly floaters: Floaters;
   private readonly burst: DiscoveryBurst;
@@ -80,6 +81,8 @@ export class Hud {
   private readonly veil: HTMLDivElement;
   private readonly treeBtn: HTMLButtonElement;
   private treeKey = '';
+  /** Drop feedback waiting for a worker Gull to let go of its block. */
+  private readonly pending: { t: number; fn: () => void }[] = [];
   /** Shards already banked but still on the Ascension card, not yet in the counter. */
   private pendingShards = 0;
 
@@ -143,7 +146,7 @@ export class Hud {
 
     const cost = document.createElement('div');
     cost.className = 'cost-chip';
-    cost.innerHTML = `${ICONS.block}<span class="cost-value"></span><span class="cost-sep"></span><span class="cost-preview"></span><span class="cost-meter"><i></i></span>`;
+    cost.innerHTML = `${ICONS.block}<span class="cost-value"></span><span class="cost-sep"></span><span class="cost-preview"></span><span class="cost-rapid">${ICONS.rapid}</span><span class="cost-meter"><i></i></span>`;
     root.appendChild(cost);
 
     const q = <T extends HTMLElement>(sel: string, from: ParentNode = top) => from.querySelector<T>(sel)!;
@@ -163,6 +166,7 @@ export class Hud {
       value: q('.cost-value', cost),
       preview: q('.cost-preview', cost),
       meter: q('.cost-meter i', cost),
+      rapid: false,
     };
 
     this.ascend = new AscendButton(root, (held) => game.setHold('button', held));
@@ -233,6 +237,13 @@ export class Hud {
     );
 
     if (!this.game.isAscending && !this.game.isPaused) this.ambientPops(dt);
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      const p = this.pending[i];
+      p.t -= dt;
+      if (p.t > 0) continue;
+      this.pending.splice(i, 1);
+      p.fn();
+    }
     this.floaters.update(dt);
     this.ceremony.update(this.game.ascensionTime);
     this.renderTreeButton();
@@ -250,56 +261,11 @@ export class Hud {
   }
 
   private listen(): void {
-    const { events, grid } = this.game;
-    const { k } = grid;
+    const { events } = this.game;
 
-    events.on('drop', ({ column, cost, outcome, incomeBefore }) => {
-      const gain = outcome.evaluation.income - incomeBefore;
-      if (gain > 1e-6) {
-        this.floaters.at(
-          this.game.columnAnchor(column, this.anchor),
-          { key: `gain:${column}`, value: gain, format: (v) => `+${formatNumber(v)}<small>/s</small>` },
-          'gain',
-        );
-      }
-      // Beside the Resonance pill, so it never sits on the number itself.
-      // Floaters center on x, so leave room for half a label.
-      const r = this.resPill.getBoundingClientRect();
-      this.floaters.atScreen(
-        r.right + 34,
-        r.top + r.height * 0.75,
-        { key: 'spend', value: cost, format: (v) => `-${formatNumber(v)}` },
-        'bad',
-      );
-
-      for (const t of outcome.newTypes) this.burst.show(t);
-      for (const c of outcome.goldenRolled) {
-        this.floaters.at(this.game.columnAnchor(c, this.anchor), `${ICONS.golden}×${k.K_M_GOLDEN}`, 'tag');
-      }
-      if (outcome.newBridges.length > MAX_BRIDGE_TAGS) {
-        // Many at once (a cascade): one summary tag instead of a wall of them.
-        this.floaters.at(this.game.columnAnchor(column, this.anchor), `${ICONS.bridge}×${outcome.newBridges.length}`, 'tag');
-      } else {
-        for (const e of outcome.newBridges) {
-          const edge = grid.edges[e];
-          this.game.columnAnchor(edge.a, this.anchor);
-          this.game.columnAnchor(edge.b, this.anchorB);
-          this.anchor.lerp(this.anchorB, 0.5);
-          this.floaters.at(this.anchor, `${ICONS.bridge}+${Math.round(k.K_M_BRIDGE * 100)}%`, 'tag');
-        }
-      }
-      if (!outcome.newTypes.includes('ST_PLAZA')) {
-        for (const group of outcome.newPlazas) {
-          this.anchor.set(0, 0, 0);
-          for (const c of group) this.anchor.add(this.game.columnAnchor(c, this.anchorB));
-          this.floaters.at(this.anchor.divideScalar(group.length), STRUCTURE_ICONS.ST_PLAZA, 'tag');
-        }
-      }
-      if (!outcome.newTypes.includes('ST_LIGHTHOUSE')) {
-        for (const c of outcome.newLighthouses) {
-          this.floaters.at(this.game.columnAnchor(c, this.anchor), STRUCTURE_ICONS.ST_LIGHTHOUSE, 'tag');
-        }
-      }
+    events.on('drop', (e) => {
+      if (e.delay > 0) this.pending.push({ t: e.delay, fn: () => this.dropFeedback(e) });
+      else this.dropFeedback(e);
     });
 
     events.on('reject', ({ reason }) => {
@@ -314,6 +280,7 @@ export class Hud {
 
     events.on('ascendStart', () => {
       this.root.classList.add('ascending');
+      this.pending.length = 0;
       // Labels pinned to the old island would hang in mid-air after the swap.
       this.floaters.clear();
     });
@@ -339,6 +306,60 @@ export class Hud {
       if (reason === 'tree') this.treeBtn.classList.remove('beckon');
     });
     events.on('resume', () => (this.veil.hidden = true));
+  }
+
+  /** HUD half of a drop: gain, spend, discoveries, tags. */
+  private dropFeedback({ column, cost, outcome, incomeBefore, by }: GameEvents['drop']): void {
+    const { grid } = this.game;
+    const { k } = grid;
+    const gain = outcome.evaluation.income - incomeBefore;
+    if (gain > 1e-6) {
+      // A Gull's gain wears its gull, so it reads as the flock's work.
+      const mark = by === 'gull' ? ICONS.gull : '';
+      this.floaters.at(
+        this.game.columnAnchor(column, this.anchor),
+        { key: `${by}:${column}`, value: gain, format: (v) => `${mark}+${formatNumber(v)}<small>/s</small>` },
+        'gain',
+      );
+    }
+    // Beside the Resonance pill, so it never sits on the number itself.
+    // Floaters center on x, so leave room for half a label.
+    const r = this.resPill.getBoundingClientRect();
+    this.floaters.atScreen(
+      r.right + 34,
+      r.top + r.height * 0.75,
+      { key: 'spend', value: cost, format: (v) => `-${formatNumber(v)}` },
+      'bad',
+    );
+
+    for (const t of outcome.newTypes) this.burst.show(t);
+    for (const c of outcome.goldenRolled) {
+      this.floaters.at(this.game.columnAnchor(c, this.anchor), `${ICONS.golden}×${k.K_M_GOLDEN}`, 'tag');
+    }
+    if (outcome.newBridges.length > MAX_BRIDGE_TAGS) {
+      // Many at once (a cascade): one summary tag instead of a wall of them.
+      this.floaters.at(this.game.columnAnchor(column, this.anchor), `${ICONS.bridge}×${outcome.newBridges.length}`, 'tag');
+    } else {
+      for (const e of outcome.newBridges) {
+        const edge = grid.edges[e];
+        this.game.columnAnchor(edge.a, this.anchor);
+        this.game.columnAnchor(edge.b, this.anchorB);
+        this.anchor.lerp(this.anchorB, 0.5);
+        this.floaters.at(this.anchor, `${ICONS.bridge}+${Math.round(k.K_M_BRIDGE * 100)}%`, 'tag');
+      }
+    }
+    if (!outcome.newTypes.includes('ST_PLAZA')) {
+      for (const group of outcome.newPlazas) {
+        this.anchor.set(0, 0, 0);
+        for (const c of group) this.anchor.add(this.game.columnAnchor(c, this.anchorB));
+        this.floaters.at(this.anchor.divideScalar(group.length), STRUCTURE_ICONS.ST_PLAZA, 'tag');
+      }
+    }
+    if (!outcome.newTypes.includes('ST_LIGHTHOUSE')) {
+      for (const c of outcome.newLighthouses) {
+        this.floaters.at(this.game.columnAnchor(c, this.anchor), STRUCTURE_ICONS.ST_LIGHTHOUSE, 'tag');
+      }
+    }
   }
 
   private renderHarmony(h: number, cap: number): void {
@@ -393,6 +414,12 @@ export class Hud {
       this.last.previewKey = previewKey;
       this.cost.preview.innerHTML = p ? STRUCTURE_ICONS[p.structure] : ICONS.lock;
       el.classList.toggle('fresh', !!p?.newType);
+    }
+
+    const rapid = this.game.isRapidDropping;
+    if (rapid !== this.cost.rapid) {
+      this.cost.rapid = rapid;
+      el.classList.toggle('rapid', rapid);
     }
 
     if (info.state === 'broke') {
