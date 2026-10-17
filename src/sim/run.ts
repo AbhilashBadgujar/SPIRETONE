@@ -51,6 +51,18 @@ export function bonusesFor(_meta: Meta): Readonly<Bonuses> {
   return NO_BONUSES;
 }
 
+/** Control unlocks from the tree (GDD §4). Same gap as bonusesFor. */
+export interface Unlocks {
+  /** NODE_O3: hold Drop to repeat every K_RAPID_INTERVAL. */
+  rapidDrop: boolean;
+  /** NODE_O5: orbit cursor skips capped and plaza-locked columns. */
+  orbitSkipsBlocked: boolean;
+}
+
+export function unlocksFor(_meta: Meta): Readonly<Unlocks> {
+  return { rapidDrop: false, orbitSkipsBlocked: false };
+}
+
 export function startIsland(grid: Grid, meta: Meta, rngSeed: number): Run {
   const island = createIsland(grid, meta.highestEra);
   return {

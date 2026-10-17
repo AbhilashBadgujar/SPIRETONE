@@ -24,7 +24,7 @@ const W = LAYOUT.blockWidth;
 const D = LAYOUT.blockDepth;
 const H = LAYOUT.blockHeight;
 
-export const PLAZA_HEIGHT = 0.3;
+const PLAZA_HEIGHT = LAYOUT.plazaHeight;
 export const TOWER_ROOF_HEIGHT = 0.66;
 
 function merge(...geos: BufferGeometry[]): BufferGeometry {

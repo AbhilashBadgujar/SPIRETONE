@@ -313,7 +313,7 @@ export class IslandView {
     const radial = (dist(a, c) + dist(b, d)) / 2 + LAYOUT.blockDepth * 0.9;
     const yaw = Math.atan2(cx, cz);
     this.plazaSlabs.push(place(cx, LAYOUT.groundY, cz, yaw, across, 1, radial), this.colors);
-    this.fountains.push(place(cx, LAYOUT.groundY + M.PLAZA_HEIGHT, cz, yaw), this.colors);
+    this.fountains.push(place(cx, LAYOUT.groundY + LAYOUT.plazaHeight, cz, yaw), this.colors);
   }
 
   private blockColor(island: Island, structure: StructureId, c: ColumnId, level: number): Color {

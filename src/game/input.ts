@@ -1,0 +1,162 @@
+import type { Game } from './game';
+
+// Keyboard, mouse/touch and gamepad bindings (GDD §4 controls table).
+//
+//   Drop     Space / left click / tap / pad A
+//   Ascend   hold Q / hold pad B / hold the on-screen button
+//   Select   (Direct mode) mouse hover, tap, A D W S or arrows, left stick / d-pad
+
+const MOVE_KEYS: Record<string, readonly [number, number]> = {
+  KeyA: [-1, 0],
+  ArrowLeft: [-1, 0],
+  KeyD: [1, 0],
+  ArrowRight: [1, 0],
+  KeyW: [0, -1],
+  ArrowUp: [0, -1],
+  KeyS: [0, 1],
+  ArrowDown: [0, 1],
+};
+
+const STICK_DEADZONE = 0.5;
+const REPEAT_DELAY = 0.35;
+const REPEAT_RATE = 0.16;
+const RUMBLE_EVERY = 0.1;
+
+const PAD_A = 0;
+const PAD_B = 1;
+const PAD_UP = 12;
+const PAD_DOWN = 13;
+const PAD_LEFT = 14;
+const PAD_RIGHT = 15;
+
+export class Input {
+  private padA = false;
+  private padDir = '';
+  private padRepeat = 0;
+  private rumbleTimer = 0;
+
+  constructor(
+    private readonly game: Game,
+    canvas: HTMLCanvasElement,
+  ) {
+    window.addEventListener('keydown', (e) => this.onKey(e, true));
+    window.addEventListener('keyup', (e) => this.onKey(e, false));
+    // Keyups are lost while unfocused, so drop every hold.
+    window.addEventListener('blur', () => {
+      this.game.setHold('key', false);
+      this.game.setHold('pad', false);
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse' || this.game.controlMode !== 'direct') return;
+      const c = this.game.pick(e.clientX, e.clientY);
+      if (c !== null) this.game.select(c, 'pointer');
+    });
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      if (this.game.controlMode === 'orbit') {
+        this.game.drop();
+        return;
+      }
+      const c = this.game.pick(e.clientX, e.clientY);
+      if (c === null) return;
+      this.game.select(c, 'pointer');
+      this.game.drop(c);
+    });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  /** Gamepads have no events for buttons, so poll once per frame. */
+  poll(dt: number): void {
+    const pad = firstPad();
+    if (!pad) {
+      this.game.setHold('pad', false);
+      this.padA = false;
+      return;
+    }
+
+    const a = pressed(pad, PAD_A);
+    if (a && !this.padA) this.game.drop();
+    this.padA = a;
+    this.game.setHold('pad', pressed(pad, PAD_B));
+
+    if (this.game.controlMode === 'direct') this.pollMove(pad, dt);
+    this.rumble(pad, dt);
+  }
+
+  private onKey(e: KeyboardEvent, down: boolean): void {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (down && !e.repeat) this.game.drop();
+      return;
+    }
+    if (e.code === 'KeyQ') {
+      this.game.setHold('key', down);
+      return;
+    }
+    const move = MOVE_KEYS[e.code];
+    if (move && down) {
+      e.preventDefault();
+      this.game.move(move[0], move[1]);
+    }
+  }
+
+  private pollMove(pad: Gamepad, dt: number): void {
+    const x = pad.axes[0] ?? 0;
+    const y = pad.axes[1] ?? 0;
+    let dIndex = 0;
+    let dRing = 0;
+    if (Math.abs(x) > STICK_DEADZONE && Math.abs(x) >= Math.abs(y)) dIndex = Math.sign(x);
+    else if (Math.abs(y) > STICK_DEADZONE) dRing = Math.sign(y);
+    if (pressed(pad, PAD_LEFT)) dIndex = -1;
+    if (pressed(pad, PAD_RIGHT)) dIndex = 1;
+    if (pressed(pad, PAD_UP)) dRing = -1;
+    if (pressed(pad, PAD_DOWN)) dRing = 1;
+
+    const dir = `${dIndex},${dRing}`;
+    if (dir === '0,0') {
+      this.padDir = '';
+      return;
+    }
+    if (dir !== this.padDir) {
+      this.padDir = dir;
+      this.padRepeat = REPEAT_DELAY;
+      this.game.move(dIndex, dRing);
+      return;
+    }
+    this.padRepeat -= dt;
+    if (this.padRepeat <= 0) {
+      this.padRepeat = REPEAT_RATE;
+      this.game.move(dIndex, dRing);
+    }
+  }
+
+  /** Rumble rises as the Ascend hold fills (GDD §4). */
+  private rumble(pad: Gamepad, dt: number): void {
+    const p = this.game.ascendProgress;
+    if (p <= 0) {
+      this.rumbleTimer = 0;
+      return;
+    }
+    this.rumbleTimer -= dt;
+    if (this.rumbleTimer > 0) return;
+    this.rumbleTimer = RUMBLE_EVERY;
+    // Not every browser has an actuator, or playEffect on it.
+    pad.vibrationActuator
+      ?.playEffect?.('dual-rumble', {
+        duration: RUMBLE_EVERY * 1000 + 20,
+        strongMagnitude: 0.1 + 0.6 * p,
+        weakMagnitude: 0.2 + 0.8 * p,
+      })
+      .catch(() => {});
+  }
+}
+
+function firstPad(): Gamepad | null {
+  for (const pad of navigator.getGamepads?.() ?? []) if (pad?.connected) return pad;
+  return null;
+}
+
+function pressed(pad: Gamepad, button: number): boolean {
+  return pad.buttons[button]?.pressed ?? false;
+}

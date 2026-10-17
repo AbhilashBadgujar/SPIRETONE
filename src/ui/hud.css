@@ -1,0 +1,163 @@
+:root {
+  --hud-ink: #ffffff;
+  --hud-dim: rgba(255, 255, 255, 0.4);
+  --hud-track: rgba(255, 255, 255, 0.2);
+  --hud-glass: rgba(10, 22, 34, 0.55);
+  --hud-glass-edge: rgba(255, 255, 255, 0.22);
+  --hud-gold: #ffd25e;
+  --hud-gold-deep: #e8902a;
+  --hud-core: #16283a;
+  --hud-core-hi: #3b5876;
+  --hud-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  font-family: ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+canvas {
+  touch-action: none;
+}
+
+/* --- Ascend ------------------------------------------------------------ */
+
+.ascend {
+  position: absolute;
+  left: 50%;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  width: 92px;
+  height: 92px;
+  margin-left: -46px;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+.ascend-rings {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+.ascend-rings circle {
+  fill: none;
+}
+
+.ascend-rings .track {
+  stroke: var(--hud-track);
+  stroke-width: 5;
+}
+
+.ascend-rings .fill {
+  stroke: var(--hud-ink);
+  stroke-width: 5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.3s ease, stroke 0.3s;
+}
+
+.ascend-rings .hold {
+  stroke: var(--hud-gold);
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.ascend-core {
+  position: absolute;
+  inset: 15px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--hud-dim);
+  background: radial-gradient(circle at 50% 30%, var(--hud-core-hi), var(--hud-core));
+  box-shadow: var(--hud-shadow), inset 0 2px 0 rgba(255, 255, 255, 0.16);
+  transition: transform 0.12s, color 0.25s;
+}
+
+.ascend-core svg {
+  width: 38px;
+  height: 38px;
+}
+
+.ascend.ready .ascend-core {
+  color: var(--hud-ink);
+  background: radial-gradient(circle at 50% 30%, #ffe597, var(--hud-gold-deep));
+  animation: ascend-pulse 1.4s ease-in-out infinite;
+}
+
+.ascend.ready .fill {
+  stroke: var(--hud-gold);
+}
+
+.ascend.holding .ascend-core {
+  transform: scale(0.9);
+}
+
+.ascend.shake {
+  animation: hud-shake 0.36s;
+}
+
+.ascend-chip {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px 5px 8px;
+  border: 1px solid var(--hud-glass-edge);
+  border-radius: 999px;
+  color: var(--hud-ink);
+  background: var(--hud-glass);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, 6px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.ascend-chip svg {
+  width: 20px;
+  height: 20px;
+}
+
+.ascend-chip.show {
+  opacity: 1;
+  transform: translate(-50%, -8px);
+}
+
+@keyframes ascend-pulse {
+  0%,
+  100% {
+    box-shadow: var(--hud-shadow), 0 0 0 0 rgba(255, 210, 94, 0.55);
+  }
+  50% {
+    box-shadow: var(--hud-shadow), 0 0 0 12px rgba(255, 210, 94, 0);
+  }
+}
+
+@keyframes hud-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ascend.ready .ascend-core,
+  .ascend.shake {
+    animation: none;
+  }
+}

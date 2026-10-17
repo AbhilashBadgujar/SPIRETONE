@@ -13,6 +13,8 @@ export const LAYOUT = {
   blockHeight: 0.5,
   /** Top of the grass layer; blocks stand on it. */
   groundY: 0.08,
+  /** Plaza paving stands lower than a block. */
+  plazaHeight: 0.3,
   islandRadius: 5.2,
   waterLevel: -0.45,
   /** How far outward the pier deck's center sits from its column center. */

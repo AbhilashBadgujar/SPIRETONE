@@ -1,0 +1,265 @@
+import { Matrix4, Ray, Raycaster, Vector2 } from 'three';
+import { ERA_PRESETS } from '../data/eras';
+import { ERA_IDS, type EraIndex } from '../data/ids';
+import { CursorView, type CursorState } from '../render/cursor-view';
+import { Gulls } from '../render/gulls';
+import { IslandView } from '../render/island-view';
+import { LAYOUT, columnAngle } from '../render/layout';
+import { Ocean } from '../render/ocean';
+import { Stage } from '../render/scene';
+import type { ColumnId, Grid } from '../sim/grid';
+import { ascendThreshold, isDroppable, previewDrop, totalBlocks } from '../sim/island';
+import {
+  advance,
+  ascend,
+  bonusesFor,
+  canAscend,
+  currentCost,
+  tryDrop,
+  unlocksFor,
+  type GameState,
+} from '../sim/run';
+import { AscendButton } from '../ui/ascend-button';
+import { OrbitCursor, moveSelection, type CursorContext } from './cursor';
+import { Emitter, type GameEvents } from './events';
+import { pickColumn } from './picking';
+
+// The playable client: owns the sim state, the scene and the two control
+// modes. Input (input.ts) calls in; HUD and juice listen on `events`.
+
+export type ControlMode = 'orbit' | 'direct';
+export type HoldSource = 'key' | 'pad' | 'button';
+
+const FACE_TURN = 6;
+
+export class Game {
+  readonly events = new Emitter<GameEvents>();
+  readonly stage: Stage;
+
+  private readonly view: IslandView;
+  private readonly cursorView: CursorView;
+  private readonly ocean = new Ocean();
+  private readonly gulls = new Gulls();
+  private readonly ascendButton: AscendButton;
+  private readonly orbit: OrbitCursor;
+
+  private readonly raycaster = new Raycaster();
+  private readonly ndc = new Vector2();
+  private readonly ray = new Ray();
+  private readonly inverse = new Matrix4();
+
+  private mode: ControlMode;
+  private selected: ColumnId = 0;
+  /** Direct mode via keys/stick turns the island to face the selection; hover doesn't. */
+  private faceSelected = false;
+  private readonly holds = new Set<HoldSource>();
+  private holdTime = 0;
+  /** After an Ascend, the hold must be released before another can start. */
+  private holdLatched = false;
+  private holdBlockedShown = false;
+  /** Bumped whenever the island changes, to invalidate the smart-hint cache. */
+  private version = 0;
+  private smartCache = { column: -1, version: -1, smart: false };
+  private era: EraIndex;
+  private time = 0;
+
+  constructor(
+    private readonly grid: Grid,
+    readonly state: GameState,
+    container: HTMLElement,
+    hud: HTMLElement,
+    mode: ControlMode,
+  ) {
+    this.stage = new Stage(container);
+    this.view = new IslandView(grid);
+    this.cursorView = new CursorView(grid);
+    this.orbit = new OrbitCursor(grid);
+    this.stage.scene.add(this.ocean.water, this.gulls.mesh);
+    this.stage.turntable.add(this.view.root, this.cursorView.root);
+    this.ascendButton = new AscendButton(hud, (held) => this.setHold('button', held));
+
+    this.era = state.run.island.era;
+    this.applyEra();
+    this.refreshIsland();
+    this.mode = mode;
+    this.orbit.reset(this.cursorContext());
+  }
+
+  get controlMode(): ControlMode {
+    return this.mode;
+  }
+
+  /** The column a Drop would hit. */
+  get column(): ColumnId {
+    return this.mode === 'orbit' ? this.orbit.column : this.selected;
+  }
+
+  /** 0..1 progress of the Ascend hold, for rumble. */
+  get ascendProgress(): number {
+    return this.holdTime / this.grid.k.K_ASCEND_HOLD;
+  }
+
+  setMode(mode: ControlMode): void {
+    if (mode === this.mode) return;
+    if (mode === 'orbit') this.orbit.reset(this.cursorContext(), this.selected);
+    else this.selected = this.orbit.column;
+    this.faceSelected = false;
+    this.mode = mode;
+  }
+
+  drop(c: ColumnId = this.column): void {
+    const attempt = tryDrop(this.grid, this.state, c);
+    if (!attempt.ok) {
+      if (c === this.column) this.cursorView.shake();
+      this.events.emit('reject', { column: c, reason: attempt.reason });
+      return;
+    }
+    this.cursorView.pop();
+    this.refreshIsland();
+    this.events.emit('drop', { column: c, cost: attempt.cost, outcome: attempt.outcome });
+  }
+
+  select(c: ColumnId, source: 'pointer' | 'keys'): void {
+    if (this.mode !== 'direct') return;
+    this.selected = c;
+    this.faceSelected = source === 'keys';
+  }
+
+  move(dIndex: number, dRing: number): void {
+    if (this.mode !== 'direct') return;
+    this.select(moveSelection(this.grid, this.selected, dIndex, dRing), 'keys');
+  }
+
+  setHold(source: HoldSource, held: boolean): void {
+    if (held) this.holds.add(source);
+    else this.holds.delete(source);
+  }
+
+  /** Column under a screen point, or null. */
+  pick(clientX: number, clientY: number): ColumnId | null {
+    const rect = this.stage.renderer.domElement.getBoundingClientRect();
+    this.ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.ndc, this.stage.camera);
+    this.stage.turntable.updateMatrixWorld();
+    this.inverse.copy(this.stage.turntable.matrixWorld).invert();
+    this.ray.copy(this.raycaster.ray).applyMatrix4(this.inverse);
+    return pickColumn(this.grid, this.state.run.island, this.ray);
+  }
+
+  update(dt: number): void {
+    this.time += dt;
+    if (this.mode === 'orbit') this.orbit.update(dt, this.cursorContext());
+    this.updateHold(dt);
+    advance(this.grid, this.state, dt);
+    this.updateTurntable(dt);
+
+    const c = this.column;
+    this.cursorView.setTarget(c, this.state.run.island, this.cursorState(c), this.smartAt(c));
+    this.cursorView.update(dt, this.time);
+    this.ocean.update(this.time);
+    this.gulls.update(this.time);
+
+    const { island } = this.state.run;
+    const threshold = ascendThreshold(this.grid, island);
+    this.ascendButton.render(totalBlocks(island) / threshold, canAscend(this.grid, this.state.run), this.ascendProgress);
+
+    this.stage.update(dt);
+    this.stage.render();
+  }
+
+  private updateHold(dt: number): void {
+    if (this.holds.size === 0) {
+      this.holdTime = 0;
+      this.holdLatched = false;
+      this.holdBlockedShown = false;
+      return;
+    }
+    if (this.holdLatched) return;
+    const { run } = this.state;
+    if (!canAscend(this.grid, run)) {
+      this.holdTime = 0;
+      if (!this.holdBlockedShown) {
+        this.holdBlockedShown = true;
+        const remaining = ascendThreshold(this.grid, run.island) - totalBlocks(run.island);
+        this.ascendButton.showBlocked(remaining);
+        this.events.emit('ascendBlocked', { remaining });
+      }
+      return;
+    }
+    this.holdTime += dt;
+    if (this.holdTime >= this.grid.k.K_ASCEND_HOLD) {
+      this.holdLatched = true;
+      this.holdTime = 0;
+      this.doAscend();
+    }
+  }
+
+  private doAscend(): void {
+    const shards = ascend(this.grid, this.state);
+    if (shards === null) return;
+    if (this.state.run.island.era !== this.era) {
+      this.era = this.state.run.island.era;
+      this.applyEra();
+    }
+    this.refreshIsland();
+    this.selected = 0;
+    this.orbit.reset(this.cursorContext());
+    this.events.emit('ascend', { shards });
+  }
+
+  private updateTurntable(dt: number): void {
+    const tt = this.stage.turntable;
+    if (this.mode === 'orbit') {
+      tt.rotation.y = wrapAngle(tt.rotation.y + LAYOUT.turntableSpeed * dt);
+    } else if (this.faceSelected) {
+      const d = wrapAngle(-columnAngle(this.grid, this.selected) - tt.rotation.y);
+      tt.rotation.y = wrapAngle(tt.rotation.y + d * (1 - Math.exp(-FACE_TURN * dt)));
+    }
+  }
+
+  private cursorState(c: ColumnId): CursorState {
+    const { run } = this.state;
+    if (!isDroppable(this.grid, run.island, c)) return 'blocked';
+    return run.resonance >= currentCost(this.grid, run) ? 'ready' : 'broke';
+  }
+
+  /** Would a drop here add something new (the smart-pause test)? Cached per island version. */
+  private smartAt(c: ColumnId): boolean {
+    const cache = this.smartCache;
+    if (cache.column !== c || cache.version !== this.version) {
+      const { run } = this.state;
+      const p = previewDrop(this.grid, run.island, c, bonusesFor(this.state.meta), run.evaluation);
+      cache.column = c;
+      cache.version = this.version;
+      cache.smart = p !== null && (p.newType || p.newBridge || p.newLighthouse);
+    }
+    return cache.smart;
+  }
+
+  private cursorContext(): CursorContext {
+    const { run, meta } = this.state;
+    return {
+      island: run.island,
+      evaluation: run.evaluation,
+      bonuses: bonusesFor(meta),
+      skipBlocked: unlocksFor(meta).orbitSkipsBlocked,
+    };
+  }
+
+  private refreshIsland(): void {
+    this.version++;
+    this.view.sync(this.state.run.island, this.state.run.evaluation);
+    this.stage.frameColumns(this.view.ringMaxHeights);
+  }
+
+  private applyEra(): void {
+    const preset = ERA_PRESETS[ERA_IDS[this.era]];
+    this.stage.applyPreset(preset);
+    this.ocean.applyPreset(preset);
+    this.view.applyPreset(preset);
+  }
+}
+
+function wrapAngle(a: number): number {
+  return Math.atan2(Math.sin(a), Math.cos(a));
+}

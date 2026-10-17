@@ -24,7 +24,8 @@ export const CAMERA = {
   /** NDC box the island must fit inside; the margins leave room for the HUD. */
   ndcX: 0.9,
   ndcTop: 0.62,
-  ndcBottom: -0.78,
+  /** Clears the Ascend button at bottom-center. */
+  ndcBottom: -0.66,
   /** Higher = snappier dolly. */
   smoothing: 2.5,
 };
