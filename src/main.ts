@@ -4,24 +4,33 @@ import type { EraIndex } from './data/ids';
 import { demoIsland } from './dev/demo';
 import { Game } from './game/game';
 import { Input } from './game/input';
+import { loadGame, saveGame } from './game/storage';
 import { createPerfOverlay } from './lib/perf';
 import { evaluate } from './sim/evaluate';
 import { buildGrid } from './sim/grid';
-import { bonusesFor, newGame } from './sim/run';
+import { bonusesFor, newGame, type GameState } from './sim/run';
 import { Hud } from './ui/hud';
 import './ui/hud.css';
 
+const AUTOSAVE_MS = 10_000;
+
 const grid = buildGrid(DEFAULT_CONSTANTS);
-const state = newGame(grid, Date.now() | 0);
 const params = new URLSearchParams(location.search);
 
-// ?demo=1..4 starts on a filled island in that era.
+// ?demo=1..4 starts on a filled island in that era and never touches the save.
+// ?fresh starts a new game (the next autosave replaces the old one).
 const demo = Number(params.get('demo'));
-if (demo >= 1 && demo <= 4) {
+const isDemo = demo >= 1 && demo <= 4;
+
+let state: GameState;
+if (isDemo) {
   const era = (demo - 1) as EraIndex;
+  state = newGame(grid, Date.now() | 0);
   state.meta.highestEra = era;
   state.run.island = demoIsland(grid, era);
   state.run.evaluation = evaluate(grid, state.run.island, bonusesFor(state.meta));
+} else {
+  state = (params.has('fresh') ? null : loadGame(grid)) ?? newGame(grid, Date.now() | 0);
 }
 
 // Orbit is the default (GDD §4); ?mode=direct until the settings screen exists.
@@ -32,6 +41,17 @@ const sound = new Sound(game);
 const hud = new Hud(game, document.getElementById('hud')!, sound);
 const input = new Input(game, game.stage.renderer.domElement);
 const perf = params.has('perf') ? createPerfOverlay(game.stage.renderer, document.body) : null;
+
+if (!isDemo) {
+  const save = () => saveGame(game.state);
+  window.setInterval(save, AUTOSAVE_MS);
+  // Tab switch, app switch or close: save now. No time passes while away (GDD §5).
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) save();
+  });
+  window.addEventListener('pagehide', save);
+  game.events.on('ascend', save);
+}
 
 let last = performance.now();
 game.stage.renderer.setAnimationLoop((now) => {

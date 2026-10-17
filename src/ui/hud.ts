@@ -7,6 +7,7 @@ import { ascendThreshold, totalBlocks } from '../sim/island';
 import { bonusesFor, canAscend, shardsOnAscend } from '../sim/run';
 import { AscendButton } from './ascend-button';
 import { DiscoveryBurst } from './burst';
+import { Ceremony } from './ceremony';
 import { Floaters } from './floaters';
 import { ICONS, STRUCTURE_ICONS } from './icons';
 
@@ -71,6 +72,10 @@ export class Hud {
   private readonly ascend: AscendButton;
   private readonly floaters: Floaters;
   private readonly burst: DiscoveryBurst;
+  private readonly ceremony: Ceremony;
+  private readonly veil: HTMLDivElement;
+  /** Shards already banked but still on the Ascension card, not yet in the counter. */
+  private pendingShards = 0;
 
   private last = { harmony: -1, cap: -1, types: '', era: -1 as number, costKey: '', previewKey: '' };
   private popClock = 0;
@@ -83,7 +88,7 @@ export class Hud {
 
   constructor(
     private readonly game: Game,
-    root: HTMLElement,
+    private readonly root: HTMLElement,
     sound?: MuteControl,
   ) {
     const top = document.createElement('div');
@@ -162,6 +167,19 @@ export class Hud {
       (s) => restartClass(this.typeSlots.get(s), 'landed'),
     );
 
+    this.ceremony = new Ceremony(root, () => this.shardPill);
+
+    // Pause veil: tap anywhere to resume.
+    this.veil = document.createElement('div');
+    this.veil.className = 'pause-veil';
+    this.veil.hidden = true;
+    this.veil.innerHTML = `<div class="pause-play" role="button" aria-label="Resume">${ICONS.play}</div>`;
+    this.veil.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      game.setPaused(false);
+    });
+    root.appendChild(this.veil);
+
     const n = game.grid.columnCount;
     this.earned = new Float64Array(n);
     this.sincePop = new Float64Array(n).fill(POP_MIN_GAP);
@@ -176,7 +194,7 @@ export class Hud {
 
     this.res.update(run.resonance, dt);
     this.rate.update(ev.income, dt);
-    this.shards.update(meta.shards, dt);
+    this.shards.update(meta.shards - this.pendingShards, dt);
 
     const cap = grid.k.K_HARMONY_CAP[era];
     if (ev.harmony !== this.last.harmony || cap !== this.last.cap) this.renderHarmony(ev.harmony, cap);
@@ -196,8 +214,9 @@ export class Hud {
       shardsOnAscend(grid, run),
     );
 
-    this.ambientPops(dt);
+    if (!this.game.isAscending && !this.game.isPaused) this.ambientPops(dt);
     this.floaters.update(dt);
+    this.ceremony.update(this.game.ascensionTime);
   }
 
   private listen(): void {
@@ -263,13 +282,28 @@ export class Hud {
 
     events.on('ascendBlocked', ({ remaining }) => this.ascend.showBlocked(remaining));
 
+    events.on('ascendStart', () => {
+      this.root.classList.add('ascending');
+      // Labels pinned to the old island would hang in mid-air after the swap.
+      this.floaters.clear();
+    });
     events.on('ascend', ({ shards }) => {
       this.earned.fill(0);
       this.sincePop.fill(POP_MIN_GAP);
-      restartClass(this.shardPill, 'pop');
-      const r = this.shardPill.getBoundingClientRect();
-      this.floaters.atScreen(r.left + r.width / 2, r.bottom + 34, `${ICONS.shard}+${formatNumber(shards)}`, 'tag');
+      // Hold the counter back until the card lands in it.
+      this.pendingShards = shards;
+      this.ceremony.peak(shards);
     });
+    events.on('ascendEnd', () => {
+      this.root.classList.remove('ascending');
+      void this.ceremony.end().then(() => {
+        this.pendingShards = 0;
+        restartClass(this.shardPill, 'pop');
+      });
+    });
+
+    events.on('pause', () => (this.veil.hidden = false));
+    events.on('resume', () => (this.veil.hidden = true));
   }
 
   private renderHarmony(h: number, cap: number): void {

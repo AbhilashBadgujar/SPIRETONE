@@ -1,6 +1,7 @@
 import { Vector3 } from 'three';
 import { ERA_PRESETS, type EraPreset } from '../data/eras';
 import { ERA_IDS } from '../data/ids';
+import { ASCENSION } from '../game/ascension';
 import type { Game } from '../game/game';
 import { CASCADE_STAGGER } from '../render/juice';
 import { DROP_FALL_TIME } from '../render/island-view';
@@ -152,12 +153,61 @@ export class Sound {
       this.bonk(0);
       this.bonk(0.14);
     });
+    events.on('pause', () => void this.ctx?.suspend());
+    events.on('resume', () => {
+      if (!document.hidden) void this.ctx?.resume();
+    });
+    events.on('ascendStart', () => this.whoosh(ASCENSION.rise));
     events.on('ascend', () => {
       const ctx = this.ctx;
       if (!ctx) return;
       this.arpeggio([0, 4, 7, 9, 12, 14], ctx.currentTime + 0.02, 0.06, 0.24);
       this.arpeggio([0, 7], ctx.currentTime + 0.02, 0, 0.18, -12);
     });
+    events.on('ascendLand', () => {
+      const ctx = this.ctx;
+      if (!ctx) return;
+      this.thud(ctx.currentTime, 0);
+      this.thud(ctx.currentTime + 0.01, 0);
+      this.pluck(degreeToMidi(0, this.music(), -12), ctx.currentTime, 0.3, 0);
+    });
+  }
+
+  /** Noise swept upward plus a rising sine: the island lifting off. */
+  private whoosh(duration: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.noise) return;
+    const t0 = ctx.currentTime;
+    const end = t0 + duration;
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 2.5;
+    band.frequency.setValueAtTime(300, t0);
+    band.frequency.exponentialRampToValueAtTime(4000, end);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, t0);
+    ng.gain.exponentialRampToValueAtTime(0.22, end - 0.05);
+    ng.gain.exponentialRampToValueAtTime(0.0001, end + 0.25);
+    src.connect(band).connect(ng).connect(this.master);
+    src.start(t0);
+    src.stop(end + 0.3);
+
+    const root = midiToHz(this.music().root - 12);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(root, t0);
+    osc.frequency.exponentialRampToValueAtTime(root * 4, end);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t0);
+    og.gain.exponentialRampToValueAtTime(0.12, end - 0.1);
+    og.gain.exponentialRampToValueAtTime(0.0001, end + 0.2);
+    osc.connect(og).connect(this.master);
+    osc.start(t0);
+    osc.stop(end + 0.25);
   }
 
   private music(): Music {

@@ -5,6 +5,7 @@ import type { Game } from './game';
 //   Drop     Space / left click / tap / pad A
 //   Ascend   hold Q / hold pad B / hold the on-screen button
 //   Select   (Direct mode) mouse hover, tap, A D W S or arrows, left stick / d-pad
+//   Pause    Esc / pad Menu; resume with Space, Enter, pad A or a tap
 
 const MOVE_KEYS: Record<string, readonly [number, number]> = {
   KeyA: [-1, 0],
@@ -28,12 +29,17 @@ const PAD_UP = 12;
 const PAD_DOWN = 13;
 const PAD_LEFT = 14;
 const PAD_RIGHT = 15;
+/** Menu / Start. */
+const PAD_START = 9;
 
 export class Input {
   private padA = false;
+  private padStart = false;
   private padDir = '';
   private padRepeat = 0;
   private rumbleTimer = 0;
+  /** Index of the pad that has been played with, so its disconnect can pause. */
+  private padInUse: number | null = null;
 
   constructor(
     private readonly game: Game,
@@ -45,6 +51,12 @@ export class Input {
     window.addEventListener('blur', () => {
       this.game.setHold('key', false);
       this.game.setHold('pad', false);
+    });
+    // GDD §4 cert behavior: pause when the controller in use disconnects.
+    window.addEventListener('gamepaddisconnected', (e) => {
+      if (e.gamepad.index !== this.padInUse) return;
+      this.padInUse = null;
+      this.game.setPaused(true);
     });
 
     canvas.addEventListener('pointermove', (e) => {
@@ -75,8 +87,17 @@ export class Input {
       return;
     }
 
+    if (pad.buttons.some((b) => b.pressed)) this.padInUse = pad.index;
+
+    const start = pressed(pad, PAD_START);
+    if (start && !this.padStart) this.game.setPaused(!this.game.isPaused);
+    this.padStart = start;
+
     const a = pressed(pad, PAD_A);
-    if (a && !this.padA) this.game.drop();
+    if (a && !this.padA) {
+      if (this.game.isPaused) this.game.setPaused(false);
+      else this.game.drop();
+    }
     this.padA = a;
     this.game.setHold('pad', pressed(pad, PAD_B));
 
@@ -85,6 +106,18 @@ export class Input {
   }
 
   private onKey(e: KeyboardEvent, down: boolean): void {
+    if (e.code === 'Escape') {
+      if (down && !e.repeat) this.game.setPaused(!this.game.isPaused);
+      return;
+    }
+    if (this.game.isPaused) {
+      // Space or Enter resumes; nothing else acts while paused.
+      if (down && !e.repeat && (e.code === 'Space' || e.code === 'Enter')) {
+        e.preventDefault();
+        this.game.setPaused(false);
+      }
+      return;
+    }
     if (e.code === 'Space') {
       e.preventDefault();
       if (down && !e.repeat) this.game.drop();

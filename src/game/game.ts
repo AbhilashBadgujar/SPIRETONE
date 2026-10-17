@@ -16,10 +16,12 @@ import {
   bonusesFor,
   canAscend,
   currentCost,
+  shardsOnAscend,
   tryDrop,
   unlocksFor,
   type GameState,
 } from '../sim/run';
+import { ASCENSION, ASCENSION_TOTAL, ascensionPose } from './ascension';
 import { OrbitCursor, moveSelection, type CursorContext } from './cursor';
 import { Emitter, type GameEvents } from './events';
 import { pickColumn } from './picking';
@@ -39,6 +41,8 @@ export interface CursorInfo {
 }
 
 const FACE_TURN = 6;
+/** Surf is gone once the island is this far out of the water. */
+const SURF_FADE_HEIGHT = 0.8;
 /** Headroom above a column top for HUD anchors, clear of roofs and lamps. */
 const ANCHOR_HEADROOM = 0.9;
 const _v = new Vector3();
@@ -77,6 +81,9 @@ export class Game {
   };
   private era: EraIndex;
   private time = 0;
+  /** Running Ascension sequence, or null. */
+  private ascension: { t: number; shards: number; phase: 'rise' | 'descend' | 'settle' } | null = null;
+  private paused = false;
 
   constructor(
     readonly grid: Grid,
@@ -112,6 +119,28 @@ export class Game {
   /** 0..1 progress of the Ascend hold. */
   get ascendProgress(): number {
     return this.holdTime / this.grid.k.K_ASCEND_HOLD;
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  get isAscending(): boolean {
+    return this.ascension !== null;
+  }
+
+  /** Seconds into the running Ascension sequence, or null. The HUD flash runs on this clock. */
+  get ascensionTime(): number | null {
+    return this.ascension?.t ?? null;
+  }
+
+  /** Freezes the economy, cursor and turntable; ambient scenery keeps moving. */
+  setPaused(paused: boolean): void {
+    if (paused === this.paused) return;
+    this.paused = paused;
+    this.holds.clear();
+    this.holdTime = 0;
+    this.events.emit(paused ? 'pause' : 'resume', {});
   }
 
   cursorInfo(): CursorInfo {
@@ -154,6 +183,7 @@ export class Game {
   }
 
   drop(c: ColumnId = this.column): void {
+    if (this.paused || this.ascension) return;
     const incomeBefore = this.state.run.evaluation.income;
     const attempt = tryDrop(this.grid, this.state, c);
     if (!attempt.ok) {
@@ -195,10 +225,14 @@ export class Game {
 
   update(dt: number): void {
     this.time += dt;
-    if (this.mode === 'orbit') this.orbit.update(dt, this.cursorContext());
-    this.updateHold(dt);
-    advance(this.grid, this.state, dt);
-    this.updateTurntable(dt);
+    if (this.ascension && !this.paused) {
+      this.updateAscension(dt);
+    } else if (!this.paused) {
+      if (this.mode === 'orbit') this.orbit.update(dt, this.cursorContext());
+      this.updateHold(dt);
+      advance(this.grid, this.state, dt);
+      this.updateTurntable(dt);
+    }
 
     const c = this.column;
     this.cursorView.setTarget(c, this.state.run.island, this.cursorState(c), isSmart(this.previewAt(c)));
@@ -234,11 +268,54 @@ export class Game {
     if (this.holdTime >= this.grid.k.K_ASCEND_HOLD) {
       this.holdLatched = true;
       this.holdTime = 0;
-      this.doAscend();
+      this.beginAscension();
     }
   }
 
-  private doAscend(): void {
+  private beginAscension(): void {
+    const { run } = this.state;
+    if (!canAscend(this.grid, run)) return;
+    // The economy is frozen from here, so this is exactly what the peak pays.
+    const shards = shardsOnAscend(this.grid, run);
+    this.ascension = { t: 0, shards, phase: 'rise' };
+    this.cursorView.root.visible = false;
+    this.events.emit('ascendStart', { shards });
+  }
+
+  private updateAscension(dt: number): void {
+    const a = this.ascension!;
+    a.t += dt;
+    if (a.phase === 'rise' && a.t >= ASCENSION.rise) {
+      a.phase = 'descend';
+      this.swapIsland();
+    }
+    if (a.phase === 'descend' && a.t >= ASCENSION.rise + ASCENSION.descend) {
+      a.phase = 'settle';
+      this.events.emit('ascendLand', {});
+    }
+
+    const root = this.view.root;
+    if (a.t >= ASCENSION_TOTAL) {
+      root.position.y = 0;
+      root.scale.set(1, 1, 1);
+      this.ocean.setSurf(1);
+      this.cursorView.root.visible = true;
+      this.ascension = null;
+      this.events.emit('ascendEnd', { shards: a.shards });
+      return;
+    }
+    const pose = ascensionPose(a.t);
+    root.position.y = pose.y;
+    // No island in the water, no surf around it.
+    this.ocean.setSurf(Math.max(0, 1 - pose.y / SURF_FADE_HEIGHT));
+    const widen = 1 / Math.sqrt(pose.squash);
+    root.scale.set(widen, pose.squash, widen);
+    const tt = this.stage.turntable;
+    tt.rotation.y = wrapAngle(tt.rotation.y + pose.spin * dt);
+  }
+
+  /** The peak: bank Shards and build the next island while the flash hides it. */
+  private swapIsland(): void {
     const shards = ascend(this.grid, this.state);
     if (shards === null) return;
     if (this.state.run.island.era !== this.era) {

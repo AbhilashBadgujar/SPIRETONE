@@ -19,6 +19,8 @@ export const CASCADE_STAGGER = 0.12;
 const GOLD = 0xffd25e;
 /** Cap spark bursts when many bridges form in one drop. */
 const MAX_BRIDGE_BURSTS = 4;
+/** Sparkle bursts shed while the island rises (one every 0.08 s). */
+const ASCEND_SPARKLES = 15;
 
 interface Timer {
   t: number;
@@ -32,6 +34,7 @@ export class Juice {
   private prev: StructureId[];
   private readonly dustColor = new Color();
   private readonly sparkColor = new Color();
+  private readonly foamColor = new Color();
   private readonly at = new Vector3();
   private readonly atB = new Vector3();
 
@@ -126,16 +129,52 @@ export class Juice {
       });
     });
 
-    events.on('ascend', () => {
+    // Rising island sheds gold from its columns, riding the island's lift.
+    events.on('ascendStart', () => {
       this.view.pulseCrystal(0.9);
+      for (let i = 0; i < ASCEND_SPARKLES; i++) {
+        this.after(i * 0.08, () => {
+          const island = this.island();
+          const built = island.heights.flatMap((h, c) => (h > 0 ? [c] : []));
+          if (built.length === 0) return;
+          const c = built[Math.floor(Math.random() * built.length)];
+          this.top(c, this.at).y += this.view.root.position.y;
+          this.particles.sparks.emit({
+            origin: this.at,
+            count: 8,
+            color: GOLD,
+            shape: 'fountain',
+            speed: [1.5, 3.2],
+            size: [0.03, 0.06],
+            life: [0.6, 1],
+            gravity: -1,
+          });
+        });
+      }
+    });
+
+    // The new island hits the water: a splash ring round the rim and a crystal flare.
+    events.on('ascendLand', () => {
+      this.view.pulseCrystal(0.7);
+      this.particles.dust.emit({
+        origin: this.at.set(0, LAYOUT.waterLevel + 0.1, 0),
+        count: 60,
+        color: this.foamColor,
+        shape: 'ring',
+        radius: LAYOUT.islandRadius + 0.2,
+        speed: [1.5, 3.2],
+        size: [0.06, 0.12],
+        life: [0.5, 0.9],
+        gravity: 5,
+      });
       this.particles.sparks.emit({
         origin: this.at.set(0, 2.3, 0),
-        count: 60,
+        count: 40,
         color: GOLD,
         shape: 'sphere',
-        speed: [2, 5],
-        size: [0.04, 0.08],
-        life: [0.8, 1.4],
+        speed: [1.5, 3.5],
+        size: [0.04, 0.07],
+        life: [0.7, 1.2],
         gravity: 1.5,
       });
     });
@@ -149,6 +188,7 @@ export class Juice {
   applyPreset(p: EraPreset): void {
     this.dustColor.setHex(p.island.sand).lerp(new Color(p.palette.base), 0.4);
     this.sparkColor.setHex(p.palette.emissive);
+    this.foamColor.setHex(p.ocean.foam);
     this.beams.setColor(p.palette.emissive);
   }
 

@@ -35,6 +35,11 @@
   box-sizing: border-box;
 }
 
+/* Class rules like `display: flex` outrank the UA's [hidden] rule; make hidden win. */
+.hud [hidden] {
+  display: none !important;
+}
+
 .hud svg {
   display: block;
   flex: none;
@@ -599,6 +604,93 @@ canvas {
 .ascend-gain svg {
   color: var(--hud-violet);
   filter: drop-shadow(0 0 5px rgba(195, 178, 255, 0.7));
+}
+
+/* --- Ascension ----------------------------------------------------------- */
+
+.ascend-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 42%, #fffdf4 0%, #fff3c4 35%, #ffd27a 75%, #f2a64a 100%);
+  opacity: 0;
+}
+
+/* Controls step aside while the sequence runs. */
+.hud.ascending .cost-chip,
+.hud.ascending .ascend {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+
+.hud .cost-chip,
+.hud .ascend {
+  transition: opacity 0.4s;
+}
+
+.shard-card {
+  position: absolute;
+  left: 50%;
+  top: 32%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: -100px;
+  width: 200px;
+  justify-content: center;
+  padding: 14px 22px;
+  border: 1px solid var(--hud-glass-edge);
+  border-radius: 28px;
+  background: linear-gradient(180deg, var(--hud-glass-top), var(--hud-glass-bottom));
+  box-shadow: var(--hud-shadow), 0 0 40px rgba(195, 178, 255, 0.45);
+  color: var(--hud-violet);
+  font-size: 44px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-shadow: var(--hud-text-shadow);
+  opacity: 0;
+}
+
+.shard-card svg {
+  width: 52px;
+  height: 52px;
+  filter: drop-shadow(0 0 10px rgba(195, 178, 255, 0.9));
+}
+
+.shard-card span {
+  color: var(--hud-ink);
+}
+
+/* --- Pause --------------------------------------------------------------- */
+
+.pause-veil {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 14, 22, 0.5);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.pause-play {
+  display: grid;
+  place-items: center;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  color: var(--hud-ink);
+  background: radial-gradient(circle at 50% 30%, #ffe597, var(--hud-gold-deep));
+  box-shadow: var(--hud-shadow), 0 0 0 6px rgba(255, 255, 255, 0.18);
+  animation: ascend-pulse 1.6s ease-in-out infinite;
+}
+
+.pause-play svg {
+  width: 48px;
+  height: 48px;
+  margin-left: 6px;
 }
 
 /* --- Tooltips (pointer devices only) --------------------------------------- */

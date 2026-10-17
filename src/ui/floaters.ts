@@ -72,6 +72,13 @@ export class Floaters {
     return this.pool.reduce((n, f) => n + (f.active ? 0 : 1), 0);
   }
 
+  clear(): void {
+    for (const f of this.pool) {
+      f.active = false;
+      f.el.hidden = true;
+    }
+  }
+
   /** `content` is HTML, or a Merge for numbers that should add up. */
   at(local: Vector3, content: string | Merge, kind: FloaterKind): void {
     if (this.merge(content)) return;

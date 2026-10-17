@@ -8,7 +8,16 @@ export interface GameEvents {
   reject: { column: ColumnId; reason: DropRejection | 'CANT_AFFORD' };
   /** Ascend held below the fill threshold. */
   ascendBlocked: { remaining: number };
+  /** Hold completed: the sequence begins and controls lock. */
+  ascendStart: { shards: number };
+  /** Sequence peak: Shards banked and the new island is in place (behind the flash). */
   ascend: { shards: number };
+  /** The new island touches down. */
+  ascendLand: Record<string, never>;
+  /** Sequence over; controls are back. */
+  ascendEnd: { shards: number };
+  pause: Record<string, never>;
+  resume: Record<string, never>;
 }
 
 type Handler<T> = (payload: T) => void;
