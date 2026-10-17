@@ -14,8 +14,10 @@ import { ACHIEVEMENT_ICONS } from './achievement-icons';
 import { AscendButton } from './ascend-button';
 import { DiscoveryBurst } from './burst';
 import { Ceremony } from './ceremony';
+import { Coach } from './coach';
 import { EraCard } from './era-card';
 import { Floaters } from './floaters';
+import { HowTo } from './how-to';
 import { ICONS, STRUCTURE_ICONS } from './icons';
 import { restartClass } from './restart-class';
 import { Toasts } from './toasts';
@@ -109,6 +111,8 @@ export class Hud {
   private readonly toasts: Toasts;
   private readonly trophies: { score: HTMLElement; tiles: Map<AchId, HTMLElement>; caption: HTMLElement };
   private readonly settingsEl: HTMLElement | null;
+  private readonly howTo: HowTo;
+  private readonly coach: Coach | null;
   private paintSound: () => void = () => {};
   /** Seconds the reset button has been held, or null when it isn't. */
   private resetHeld: number | null = null;
@@ -133,6 +137,8 @@ export class Hud {
     private readonly root: HTMLElement,
     private readonly sound?: HudSound,
     private readonly settings?: SettingsControl,
+    /** First-run hints and How to play on first launch (off for demo islands). */
+    coaching = true,
   ) {
     const top = document.createElement('div');
     top.className = 'hud-top';
@@ -241,6 +247,7 @@ export class Hud {
         <button class="setting" type="button" tabindex="-1" data-k="mode"></button>
         <button class="setting" type="button" tabindex="-1" data-k="quality">${ICONS.quality}<i class="setting-badge"></i></button>
         <button class="setting" type="button" tabindex="-1" data-k="sound"></button>
+        <button class="setting" type="button" tabindex="-1" data-k="help">${ICONS.help}</button>
         <button class="setting setting-reset" type="button" tabindex="-1" data-k="reset">${ICONS.reset}</button>
       </div>
       <div class="trophies">
@@ -277,6 +284,28 @@ export class Hud {
     root.appendChild(this.veil);
 
     this.toasts = new Toasts(root, () => sound?.chime());
+
+    this.howTo = new HowTo(game, root);
+    this.coach = coaching
+      ? new Coach(
+          game,
+          root,
+          {
+            res: this.resPill,
+            harmony: this.harmonyPill,
+            ascend: this.ascend.el,
+            tree: this.treeBtn,
+            era: this.eraBadge,
+            treeBuy: () => root.querySelector<HTMLElement>('.tree-buy'),
+          },
+          () => this.busy(),
+        )
+      : null;
+    // A new player meets the loop before anything else.
+    if (this.coach && !this.coach.hasSeen('howto')) {
+      this.coach.markSeen('howto');
+      this.howTo.open();
+    }
 
     const n = game.grid.columnCount;
     this.earned = new Float64Array(n);
@@ -322,12 +351,16 @@ export class Hud {
     }
     this.floaters.update(dt);
     this.ceremony.update(this.game.ascensionTime);
-    // Toasts wait while the Ascension, its Shards card or the era card is up.
-    const busy = this.game.isAscending || this.pendingShards > 0 || this.eraToReveal !== null || this.eraCard.showing;
-    this.toasts.update(dt, busy);
+    this.toasts.update(dt, this.busy());
+    this.coach?.update(dt);
     this.updateReset(dt);
     this.renderTreeButton();
     this.tree.update();
+  }
+
+  /** The Ascension, its Shards card or the era card owns the screen; toasts and hints wait. */
+  private busy(): boolean {
+    return this.game.isAscending || this.pendingShards > 0 || this.eraToReveal !== null || this.eraCard.showing;
   }
 
   private renderTreeButton(): void {
@@ -421,6 +454,9 @@ export class Hud {
       else if (k === 'sound' && sound) {
         sound.toggleMute();
         this.paintSound();
+      } else if (k === 'help') {
+        this.howTo.open();
+        return;
       } else if (k === 'reset') this.resetHeld = 0;
       if (k) this.describeSetting(k);
       this.paintSettings();
@@ -459,6 +495,7 @@ export class Hud {
       mode: settings.mode === 'orbit' ? 'Orbit cursor' : 'Direct control',
       quality: `Quality · ${settings.quality[0].toUpperCase()}${settings.quality.slice(1)}`,
       sound: this.sound?.muted ? 'Sound off' : 'Sound on',
+      help: 'How to play',
       reset: 'Hold to erase all progress',
     };
     this.trophies.caption.textContent = text[k] ?? '';

@@ -88,7 +88,7 @@ export const DEFAULT_CONSTANTS: Readonly<Constants> = Object.freeze({
 
   K_RAPID_INTERVAL: 0.15,
   K_ASCEND_HOLD: 1.2,
-  K_CURSOR_STEP: 0.35,
+  K_CURSOR_STEP: 0.6,
   K_SMART_PAUSE: 0.3,
 
   // Tuned by tools/pacing.ts (GDD §11). GDD v1 had 20 and 10 for every era, which

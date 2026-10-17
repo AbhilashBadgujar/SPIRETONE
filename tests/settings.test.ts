@@ -58,12 +58,21 @@ describe('settings storage', () => {
     expect(() => saveSettings({ mode: 'direct', quality: 'low' })).not.toThrow();
   });
 
+  it('defaults to Direct, and resets an Orbit saved before Direct became the default', () => {
+    expect(DEFAULT_SETTINGS.mode).toBe('direct');
+    const store = new Map<string, string>([['spiretone.settings', JSON.stringify({ mode: 'orbit', quality: 'low' })]]);
+    g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) };
+    expect(loadSettings()).toEqual({ mode: 'direct', quality: 'low' });
+    saveSettings({ mode: 'orbit', quality: 'low' });
+    expect(loadSettings().mode).toBe('orbit');
+  });
+
   it('round-trips, and rejects garbage field by field', () => {
     const store = new Map<string, string>();
     g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) };
     saveSettings({ mode: 'direct', quality: 'low' });
     expect(loadSettings()).toEqual({ mode: 'direct', quality: 'low' });
-    store.set('spiretone.settings', JSON.stringify({ mode: 'sideways', quality: 'ultra' }));
+    store.set('spiretone.settings', JSON.stringify({ v: 2, mode: 'sideways', quality: 'ultra' }));
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
     store.set('spiretone.settings', '{not json');
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);

@@ -1,12 +1,18 @@
 // Pacing simulator (GDD §11). Plays a whole game the way a reasonable
-// orbit-mode player would and reports when each §5 milestone lands.
+// player would and reports when each §5 milestone lands.
 //
-//   npm run pacing            report with the shipped constants and tree
+//   npm run pacing            report for the default (Direct) player
+//   npm run pacing -- orbit   report for an Orbit-mode player
 //
 // Player model:
-//   - Drops only when the orbit cursor is on a column whose income gain is at
-//     least PICKY × the best available, once per cursor visit (rapid drop,
-//     NODE_O3, allows repeats every K_RAPID_INTERVAL).
+//   - Direct (the web default): taps a column whose income gain is at least
+//     PICKY × the best, picked at random among those (a person doesn't always
+//     find the single best spot, and that's how Plazas get built), as soon
+//     as a block is affordable, THINK seconds between taps (THINK_RAPID once
+//     NODE_O3 lets a held press repeat).
+//   - Orbit: drops only when the orbit cursor is on a column whose income
+//     gain is at least PICKY × the best available, once per cursor visit
+//     (rapid drop, NODE_O3, allows repeats every K_RAPID_INTERVAL).
 //   - Gulls drop on their own (src/sim/gulls.ts, the same code the game runs).
 //   - Ascends once allowed and the next block is more than ASCEND_WAIT seconds
 //     away, nothing left would raise income, or MAX_LINGER seconds have passed.
@@ -38,7 +44,11 @@ import {
 } from '../src/sim/run';
 import { buyNode, effectsOf, nodeState } from '../src/sim/tree';
 
+export type PlayerMode = 'direct' | 'orbit';
+
 export const PLAYER = {
+  THINK: 0.6,
+  THINK_RAPID: 0.3,
   PICKY: 0.8,
   ASCEND_WAIT: 25,
   MAX_LINGER: 150,
@@ -106,7 +116,7 @@ function buyNodes(s: GameState): NodeId[] {
   }
 }
 
-export function simulateRun(k: Readonly<Constants> = DEFAULT_CONSTANTS, seed = 7): RunReport {
+export function simulateRun(k: Readonly<Constants> = DEFAULT_CONSTANTS, seed = 7, mode: PlayerMode = 'direct'): RunReport {
   const grid = buildGrid(k);
   const s = newGame(grid, seed);
   const islands: IslandLog[] = [];
@@ -115,6 +125,14 @@ export function simulateRun(k: Readonly<Constants> = DEFAULT_CONSTANTS, seed = 7
   let t = 0;
   let stuck = false;
   const achievements: RunReport['achievements'] = [];
+  // The Direct player's choices, seeded so every run is the same.
+  let pickState = seed * 2654435761;
+  const pick = () => {
+    pickState = (pickState + 0x6d2b79f5) | 0;
+    let x = Math.imul(pickState ^ (pickState >>> 15), 1 | pickState);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
   const unlock = () => {
     for (const id of checkAchievements(s)) achievements.push({ id, min: t / 60 });
   };
@@ -161,9 +179,18 @@ export function simulateRun(k: Readonly<Constants> = DEFAULT_CONSTANTS, seed = 7
       }
       if (t - start > PLAYER.TIME_LIMIT_MIN * 60) break;
 
-      const c = cursor.column;
-      // Without rapid drop a player presses once per cursor visit.
-      const canPress = effects.rapidDrop ? t - lastPlayerDrop >= k.K_RAPID_INTERVAL : visit !== droppedOnVisit;
+      let c: number;
+      let canPress: boolean;
+      if (mode === 'direct') {
+        const near: number[] = [];
+        g.forEach((v, i) => v > 0 && v >= PLAYER.PICKY * best && near.push(i));
+        c = near.length ? near[Math.floor(pick() * near.length)] : 0;
+        canPress = t - lastPlayerDrop >= (effects.rapidDrop ? PLAYER.THINK_RAPID : PLAYER.THINK);
+      } else {
+        c = cursor.column;
+        // Without rapid drop a player presses once per cursor visit.
+        canPress = effects.rapidDrop ? t - lastPlayerDrop >= k.K_RAPID_INTERVAL : visit !== droppedOnVisit;
+      }
       if (canPress && s.run.resonance >= currentCost(grid, s.run) && g[c] > 0 && g[c] >= PLAYER.PICKY * best) {
         tryDrop(grid, s, c);
         unlock();
@@ -234,4 +261,6 @@ export function printReport(r: RunReport): void {
 }
 
 declare const process: { argv: string[] };
-if (process.argv[1]?.endsWith('pacing.mjs')) printReport(simulateRun());
+if (process.argv[1]?.endsWith('pacing.mjs')) {
+  printReport(simulateRun(DEFAULT_CONSTANTS, 7, process.argv[2] === 'orbit' ? 'orbit' : 'direct'));
+}

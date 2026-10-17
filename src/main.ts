@@ -11,6 +11,7 @@ import { createPerfOverlay } from './lib/perf';
 import { evaluate } from './sim/evaluate';
 import { buildGrid } from './sim/grid';
 import { bonusesFor, newGame, type GameState } from './sim/run';
+import { clearCoach } from './ui/coach';
 import { Hud } from './ui/hud';
 import './ui/hud.css';
 
@@ -18,11 +19,12 @@ const AUTOSAVE_MS = 10_000;
 
 const grid = buildGrid(DEFAULT_CONSTANTS);
 const params = new URLSearchParams(location.search);
-// Hosts that drop the query string still pass a bare #token: #direct, #demo1..#demo4.
+// Hosts that drop the query string still pass a bare #token: #orbit, #direct, #demo1..#demo4.
 const hash = location.hash.slice(1);
 
 // ?demo=1..4 starts on a filled island in that era and never touches the save.
 // ?fresh starts a new game (the next autosave replaces the old one).
+// ?nocoach skips How to play and the first-run hints (automated tests).
 const demo = Number(params.get('demo') ?? (/^demo[1-4]$/.test(hash) ? hash.slice(4) : null));
 const isDemo = demo >= 1 && demo <= 4;
 
@@ -37,11 +39,11 @@ if (isDemo) {
   state = (params.has('fresh') ? null : loadGame(grid)) ?? newGame(grid, Date.now() | 0);
 }
 
-// Orbit is the default (GDD §4), changed in the pause screen's settings;
-// ?mode=direct / #direct still override for testing.
+// Direct (tap where to build) is the web default, changed in the pause
+// screen's settings; ?mode=orbit|direct and #orbit / #direct override it for testing.
 const settings = loadSettings();
-const urlDirect = params.get('mode') === 'direct' || hash === 'direct';
-const mode = urlDirect ? 'direct' : settings.mode;
+const urlMode = params.get('mode') ?? hash;
+const mode = urlMode === 'orbit' || urlMode === 'direct' ? urlMode : settings.mode;
 
 const game = new Game(grid, state, document.getElementById('app')!, mode);
 const sound = new Sound(game);
@@ -76,9 +78,11 @@ const hud = new Hud(game, document.getElementById('hud')!, sound, {
     : () => {
         resetting = true;
         clearSave();
+        // A fresh start gets the first-run hints again.
+        clearCoach();
         location.reload();
       },
-});
+}, !isDemo && !params.has('nocoach'));
 const input = new Input(game, game.stage.renderer.domElement, hud.tree);
 const perf = params.has('perf') ? createPerfOverlay(game.stage.renderer, document.body) : null;
 

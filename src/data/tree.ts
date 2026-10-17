@@ -73,8 +73,8 @@ export interface TreeNode {
 
 export const TREE: readonly TreeNode[] = [
   // Core spine, straight up from the hub.
-  { id: 'NODE_C1', name: 'Terracotta Bastion', branch: 'core', cost: 30, requires: ['NODE_Y1'], effect: { kind: 'era', era: 1 }, pos: [0, -1.5] },
-  { id: 'NODE_C2', name: 'Clockwork Foundry', branch: 'core', cost: 160, requires: ['NODE_C1', 'NODE_Y4'], effect: { kind: 'era', era: 2 }, pos: [0, -3] },
+  { id: 'NODE_C1', name: 'Terracotta Bastion', branch: 'core', cost: 26, requires: ['NODE_Y1'], effect: { kind: 'era', era: 1 }, pos: [0, -1.5] },
+  { id: 'NODE_C2', name: 'Clockwork Foundry', branch: 'core', cost: 140, requires: ['NODE_C1', 'NODE_Y4'], effect: { kind: 'era', era: 2 }, pos: [0, -3] },
   { id: 'NODE_C3', name: 'Astral Citadel', branch: 'core', cost: 800, requires: ['NODE_C2', 'NODE_G3'], effect: { kind: 'era', era: 3 }, pos: [0, -4.6] },
 
   // Start: below the hub.

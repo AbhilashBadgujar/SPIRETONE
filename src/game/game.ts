@@ -40,8 +40,8 @@ import { pickColumn } from './picking';
 export type ControlMode = 'orbit' | 'direct';
 export type HoldSource = 'key' | 'pad' | 'button';
 export type DropSource = 'key' | 'pad' | 'pointer';
-/** 'menu' shows the pause veil; 'tree' freezes play behind the tree screen. */
-export type PauseReason = 'menu' | 'tree';
+/** 'menu' shows the pause veil; 'tree' and 'help' freeze play behind their screens. */
+export type PauseReason = 'menu' | 'tree' | 'help';
 
 export interface CursorInfo {
   column: ColumnId;

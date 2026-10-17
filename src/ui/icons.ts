@@ -80,6 +80,9 @@ export const ICONS = {
     <path d="M10.2 5.5h3.6v4.5h-3.6z" fill="currentColor"/>
     <path d="M4 12h16v2.4H4z" fill="currentColor"/>
     <path d="M5.5 14.4v3.4M9.8 14.4v3.4M14.2 14.4v3.4M18.5 14.4v3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`),
+  help: svg(`
+    <path d="M8.6 8.4a3.6 3.6 0 1 1 5.2 3.2c-1.2.6-1.8 1.4-1.8 2.7v.6" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+    <circle cx="12" cy="19.2" r="1.8" fill="currentColor"/>`),
   orbit: svg(`
     <path d="M19.5 9.5A8 8 0 1 0 20 14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
     <path d="m21.6 5.6-1.7 4.4-4.5-1.3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>

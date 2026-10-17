@@ -26,7 +26,7 @@ export interface GameEvents {
   era: { era: EraIndex };
   /** Sequence over; controls are back. */
   ascendEnd: { shards: number };
-  pause: { reason: 'menu' | 'tree' };
+  pause: { reason: 'menu' | 'tree' | 'help' };
   resume: Record<string, never>;
   /** A tree node was bought. */
   buy: { id: NodeId };
