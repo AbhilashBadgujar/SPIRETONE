@@ -16,6 +16,14 @@
       /* A game screen: no pinch, scroll bounce or tap flash. */
       html, body { touch-action: none; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
       #app { position: fixed; inset: 0; }
+      /* Soft vignette over the scene, under the HUD: pulls the eye to the island. */
+      #app::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(ellipse 80% 75% at 50% 47%, transparent 50%, rgba(18, 10, 4, 0.34) 100%);
+      }
     </style>
   </head>
   <body>

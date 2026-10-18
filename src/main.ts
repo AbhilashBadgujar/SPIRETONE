@@ -13,6 +13,7 @@ import { buildGrid } from './sim/grid';
 import { bonusesFor, newGame, type GameState } from './sim/run';
 import { clearCoach } from './ui/coach';
 import { Hud } from './ui/hud';
+import '@fontsource-variable/nunito';
 import './ui/hud.css';
 
 const AUTOSAVE_MS = 10_000;
@@ -50,7 +51,7 @@ const sound = new Sound(game);
 
 // Phones and tablets start a quality step lower; 'auto' steps down while slow.
 const quality = new AdaptiveQuality(settings.quality, window.matchMedia('(pointer: coarse)').matches);
-game.stage.applyQuality(LEVELS[quality.level]);
+game.applyQuality(LEVELS[quality.level]);
 
 /** Set when progress is being erased, so the page-hide save can't write it back. */
 let resetting = false;
@@ -70,7 +71,7 @@ const hud = new Hud(game, document.getElementById('hud')!, sound, {
   cycleQuality() {
     settings.quality = QUALITY_CYCLE[settings.quality];
     quality.setQuality(settings.quality);
-    game.stage.applyQuality(LEVELS[quality.level]);
+    game.applyQuality(LEVELS[quality.level]);
     saveSettings(settings);
   },
   resetProgress: isDemo
@@ -114,7 +115,7 @@ game.stage.renderer.setAnimationLoop((now) => {
   const frame = Math.max(0, (now - last) / 1000);
   last = now;
   const level = quality.sample(frame);
-  if (level !== null) game.stage.applyQuality(LEVELS[level]);
+  if (level !== null) game.applyQuality(LEVELS[level]);
   // Clamped so a backgrounded tab never banks idle income (GDD §5: no offline progress).
   const dt = Math.min(0.1, frame);
   input.poll(dt);

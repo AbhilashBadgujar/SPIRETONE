@@ -16,7 +16,8 @@
   --hud-core-hi: #3b5876;
   --hud-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   --hud-text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
-  font-family: ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Bundled (main.ts), so every platform gets the same rounded face, not only Apple's ui-rounded. */
+  font-family: 'Nunito Variable', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 .hud {

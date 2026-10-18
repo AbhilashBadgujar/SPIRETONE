@@ -9,12 +9,14 @@ import {
   PerspectiveCamera,
   Scene,
   SRGBColorSpace,
+  Vector2,
   Vector3,
   WebGLRenderer,
 } from 'three';
 import type { EraPreset } from '../data/eras';
 import type { RenderLevel } from '../game/quality';
 import { LAYOUT, columnTopY } from './layout';
+import { Post } from './post';
 
 // Renderer, lights, sky and the fixed camera (GDD §1: fixed, framed on the
 // island, auto-dolly to fit the tallest column).
@@ -34,8 +36,13 @@ export const CAMERA = {
 /** Headroom above a column's top block for roofs and lamps. */
 const CAP_ALLOWANCE = 0.8;
 const RIM_RADIUS = LAYOUT.islandRadius + 0.7;
+/** Shadows lift a little: sky light still reaches into them. */
+const SHADOW_INTENSITY = 0.82;
+/** Light-space slack around the fitted shadow box, for flags and the soft edge. */
+const SHADOW_MARGIN = 0.6;
 
 const _v = new Vector3();
+const _size = new Vector2();
 const deg = (d: number) => (d * Math.PI) / 180;
 
 export class Stage {
@@ -45,6 +52,7 @@ export class Stage {
   /** Everything that spins with the island. */
   readonly turntable = new Group();
 
+  private readonly post: Post;
   private readonly sun = new DirectionalLight();
   private readonly skyLight = new HemisphereLight();
   private readonly fog = new FogExp2(0xffffff, 0.01);
@@ -63,6 +71,9 @@ export class Stage {
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
+    // Post renders several passes a frame; the perf overlay wants the whole frame.
+    this.renderer.info.autoReset = false;
+    this.post = new Post(this.renderer);
     const canvas = this.renderer.domElement;
     canvas.style.display = 'block';
     canvas.style.width = '100%';
@@ -78,12 +89,12 @@ export class Stage {
 
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.radius = 3;
+    this.sun.shadow.radius = 4;
+    this.sun.shadow.intensity = SHADOW_INTENSITY;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.02;
+    // left/right/top/bottom are fitted to the island (fitShadow).
     const sc = this.sun.shadow.camera;
-    sc.left = sc.bottom = -8;
-    sc.right = sc.top = 8;
     sc.near = 1;
     sc.far = 60;
 
@@ -114,11 +125,16 @@ export class Stage {
     this.sun.color.setHex(p.sun.color);
     this.sun.intensity = p.sun.intensity;
     this.sun.position.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(25);
+    this.fitShadow(this.framePoints());
+
+    this.post.bloomStrength = p.bloom;
   }
 
-  /** Pixel ratio and shadow resolution (game/quality.ts). */
+  /** Pixel ratio, shadow resolution and post-processing (game/quality.ts). */
   applyQuality(level: RenderLevel): void {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, level.pixelRatio));
+    this.post.configure(level.bloom, level.tiltShift);
+    this.sizePost();
     const shadow = this.sun.shadow;
     if (shadow.mapSize.x !== level.shadowSize) {
       shadow.mapSize.set(level.shadowSize, level.shadowSize);
@@ -143,13 +159,16 @@ export class Stage {
   }
 
   render(): void {
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.info.reset();
+    if (this.post.enabled) this.post.render(this.scene, this.camera);
+    else this.renderer.render(this.scene, this.camera);
   }
 
   private resize(): void {
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(w, h, false);
+    this.sizePost();
     for (const cam of [this.camera, this.probe]) {
       cam.aspect = w / h;
       cam.updateProjectionMatrix();
@@ -158,8 +177,14 @@ export class Stage {
     this.snap = true;
   }
 
+  private sizePost(): void {
+    const { x, y } = this.renderer.getDrawingBufferSize(_size);
+    this.post.setSize(x, y);
+  }
+
   private computeGoal(): void {
     const points = this.framePoints();
+    this.fitShadow(points);
     const tallest = Math.max(...points.map((p) => p.y));
     const targetY = Math.max(0.2, tallest * 0.32);
     let lo = 4;
@@ -181,6 +206,35 @@ export class Stage {
       if (Math.abs(_v.x) > CAMERA.ndcX || _v.y > CAMERA.ndcTop || _v.y < CAMERA.ndcBottom) return false;
     }
     return true;
+  }
+
+  /**
+   * Fit the sun's shadow box to the island's hull, seen from the sun: as
+   * tight as it goes on a low island (sharper shadows), and still around
+   * the tallest columns when a low sun stretches their shadows.
+   */
+  private fitShadow(points: Vector3[]): void {
+    const sc = this.sun.shadow.camera;
+    // Aimed the way DirectionalLightShadow aims it every frame.
+    sc.position.copy(this.sun.position);
+    sc.lookAt(this.sun.target.position);
+    sc.updateMatrixWorld();
+    let left = Infinity;
+    let right = -Infinity;
+    let bottom = Infinity;
+    let top = -Infinity;
+    for (const p of points) {
+      _v.copy(p).applyMatrix4(sc.matrixWorldInverse);
+      left = Math.min(left, _v.x);
+      right = Math.max(right, _v.x);
+      bottom = Math.min(bottom, _v.y);
+      top = Math.max(top, _v.y);
+    }
+    sc.left = left - SHADOW_MARGIN;
+    sc.right = right + SHADOW_MARGIN;
+    sc.bottom = bottom - SHADOW_MARGIN;
+    sc.top = top + SHADOW_MARGIN;
+    sc.updateProjectionMatrix();
   }
 
   /** Rotation-invariant hull: the island turns, so sample full circles. */

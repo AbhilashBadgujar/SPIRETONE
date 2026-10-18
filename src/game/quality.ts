@@ -1,21 +1,25 @@
 import type { Quality } from './settings';
 
-// Render quality: a ladder of pixel-ratio and shadow-map levels. 'high' and
-// 'low' pin a level; 'auto' starts at a level that suits the device and
-// steps down while frames run slow. It never steps back up within a
-// session, so it can't oscillate.
+// Render quality: a ladder of pixel-ratio, shadow-map and post-processing
+// levels. 'high' and 'low' pin a level; 'auto' starts at a level that suits
+// the device and steps down while frames run slow. It never steps back up
+// within a session, so it can't oscillate.
 
 export interface RenderLevel {
   /** Cap on devicePixelRatio. */
   pixelRatio: number;
   shadowSize: number;
+  /** Lit windows, lamps and the crystal glow (render/post.ts). */
+  bloom: boolean;
+  /** Miniature focus falloff at the top and bottom of the frame; needs bloom's pipeline. */
+  tiltShift: boolean;
 }
 
 export const LEVELS: readonly RenderLevel[] = [
-  { pixelRatio: 2, shadowSize: 2048 },
-  { pixelRatio: 1.5, shadowSize: 2048 },
-  { pixelRatio: 1.25, shadowSize: 1024 },
-  { pixelRatio: 1, shadowSize: 1024 },
+  { pixelRatio: 2, shadowSize: 2048, bloom: true, tiltShift: true },
+  { pixelRatio: 1.5, shadowSize: 2048, bloom: true, tiltShift: true },
+  { pixelRatio: 1.25, shadowSize: 1024, bloom: true, tiltShift: false },
+  { pixelRatio: 1, shadowSize: 1024, bloom: false, tiltShift: false },
 ];
 
 const LOWEST = LEVELS.length - 1;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { degreeToMidi, dropNote } from '../src/audio/sound';
+import { PAD_CHORDS, degreeToMidi, dropNote } from '../src/audio/sound';
 import { ERA_PRESETS } from '../src/data/eras';
 import { DROP_FALL_TIME, DROP_TOTAL_TIME, dropPose } from '../src/render/island-view';
 
@@ -26,6 +26,15 @@ describe('drop notes', () => {
           expect(scale).toContain((((n - music.root) % 12) + 12) % 12);
           expect(n - music.root).toBeLessThan(24);
         }
+      }
+    }
+  });
+
+  it('keeps the background pad chords in key, so drops never clash with them', () => {
+    const scales = { major: [0, 2, 4, 7, 9], minor: [0, 3, 5, 7, 10] };
+    for (const scale of ['major', 'minor'] as const) {
+      for (const chord of PAD_CHORDS[scale]) {
+        for (const s of chord) expect(scales[scale], `${scale} ${chord}`).toContain(((s % 12) + 12) % 12);
       }
     }
   });

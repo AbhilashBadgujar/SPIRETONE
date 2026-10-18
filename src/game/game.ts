@@ -16,6 +16,7 @@ import { checkAchievements } from '../sim/achievements';
 import type { ColumnId, Grid } from '../sim/grid';
 import { advanceGulls } from '../sim/gulls';
 import { ascendThreshold, isDroppable, previewDrop, totalBlocks, type DropPreview } from '../sim/island';
+import type { RenderLevel } from './quality';
 import {
   advance,
   ascend,
@@ -179,6 +180,12 @@ export class Game {
     this.holdTime = 0;
     if (next) this.events.emit('pause', { reason: next });
     else this.events.emit('resume', {});
+  }
+
+  /** Render quality (quality.ts). With bloom on, glowing parts burn bright enough to catch it. */
+  applyQuality(level: RenderLevel): void {
+    this.stage.applyQuality(level);
+    this.view.setBloom(level.bloom);
   }
 
   /** Buys a tree node. Yield bonuses apply to this island at once; eras from the next. */

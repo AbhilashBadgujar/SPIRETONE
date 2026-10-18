@@ -39,6 +39,11 @@ describe('adaptive quality', () => {
     expect(q.level).toBe(0);
   });
 
+  it('only asks for tilt-shift where the post pipeline runs', () => {
+    for (const level of LEVELS) if (level.tiltShift) expect(level.bloom).toBe(true);
+    expect(LEVELS[LOWEST].bloom).toBe(false);
+  });
+
   it('starts over when the setting changes', () => {
     const q = new AdaptiveQuality('auto', false);
     run(q, 1 / 20, 30);

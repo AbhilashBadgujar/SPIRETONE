@@ -13,6 +13,7 @@
     "pacing": "rolldown tools/pacing.ts --format esm --platform node --file node_modules/.cache/pacing.mjs --log-level warn && node node_modules/.cache/pacing.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/nunito": "^5.3.0",
     "three": "^0.186.1"
   },
   "devDependencies": {

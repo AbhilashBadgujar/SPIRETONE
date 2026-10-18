@@ -48,6 +48,11 @@ export interface EraPreset {
     top: number;
     bottom: number;
   };
+  /**
+   * Densities are tuned for the post-processed look (render/post.ts), which
+   * fogs before tone mapping; three's straight-to-screen path (Low quality)
+   * fogs after it and reads a little clearer.
+   */
   fog: {
     color: number;
     density: number;
@@ -66,12 +71,19 @@ export interface EraPreset {
   };
   /** Lighthouse beam strength (additive). */
   beams: number;
-  /** Root key for drop notes and chords. */
+  /** Bloom strength on lit windows, lamps and the crystal (render/post.ts). */
+  bloom: number;
+  /** Root key for drop notes, chords and the background music. */
   music: {
     /** MIDI note number of the tonic. */
     root: number;
     /** Pentatonic flavor. */
     scale: 'major' | 'minor';
+  };
+  /** Ambient bed under the music, 0..1 per layer (audio/sound.ts). */
+  soundscape: {
+    waves: number;
+    wind: number;
   };
 }
 
@@ -89,10 +101,12 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     sun: { color: 0xfff0d4, intensity: 2.6, elevation: 38, azimuth: 35 },
     skyLight: { sky: 0xcfe8ff, ground: 0xe8d3a8, intensity: 1.15 },
     sky: { top: 0x7cc3ea, bottom: 0xf7e9cc },
-    fog: { color: 0xeee6d2, density: 0.012 },
+    fog: { color: 0xeee6d2, density: 0.006 },
     ocean: { shallow: 0x35c4bf, deep: 0x16708f, foam: 0xffffff, waveSpeed: 0.6, waveHeight: 0.12, roughness: 0.3, stars: 0, aurora: null },
     beams: 0.22,
+    bloom: 0.35,
     music: { root: 62, scale: 'major' }, // D
+    soundscape: { waves: 1, wind: 0.35 },
   },
   // Golden hour, stucco, clay roofs, lanterns.
   ERA_2: {
@@ -104,15 +118,18 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     litWindows: true,
     gears: false,
     ambient: 'embers',
-    sun: { color: 0xffb46a, intensity: 2.5, elevation: 17, azimuth: -55 },
+    // Low enough for long golden shadows, high enough that they stay on the island's doorstep.
+    sun: { color: 0xffb46a, intensity: 2.5, elevation: 22, azimuth: -55 },
     // Golden hour: the warmth comes from the low sun; the sky above stays blue,
     // or the water under it goes olive.
     skyLight: { sky: 0xa8c4f0, ground: 0xb08860, intensity: 1.05 },
     sky: { top: 0x4f73b8, bottom: 0xffb26e },
-    fog: { color: 0xf7c28e, density: 0.0075 },
+    fog: { color: 0xf7c28e, density: 0.004 },
     ocean: { shallow: 0x2a92c8, deep: 0x16357a, foam: 0xffe6c8, waveSpeed: 0.5, waveHeight: 0.1, roughness: 0.25, stars: 0, aurora: null },
     beams: 0.2,
+    bloom: 0.45,
     music: { root: 57, scale: 'major' }, // A
+    soundscape: { waves: 0.8, wind: 0.25 },
   },
   // Stormy dusk, brass, copper, steam vents.
   ERA_3: {
@@ -127,10 +144,12 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     sun: { color: 0xdfe4f2, intensity: 2.1, elevation: 26, azimuth: 120 },
     skyLight: { sky: 0xa4abc4, ground: 0x4c443c, intensity: 1.2 },
     sky: { top: 0x2a3242, bottom: 0x8a8090 },
-    fog: { color: 0x5e6070, density: 0.015 },
+    fog: { color: 0x5e6070, density: 0.0128 },
     ocean: { shallow: 0x46707c, deep: 0x1e2e38, foam: 0xd0d4dc, waveSpeed: 1.0, waveHeight: 0.22, roughness: 0.35, stars: 0, aurora: null },
     beams: 0.12,
+    bloom: 0.5,
     music: { root: 59, scale: 'minor' }, // B minor
+    soundscape: { waves: 1, wind: 0.8 },
   },
   // Starfield ocean, obsidian, crystal, aurora.
   ERA_4: {
@@ -148,6 +167,8 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     fog: { color: 0x14102c, density: 0.01 },
     ocean: { shallow: 0x141640, deep: 0x04040e, foam: 0x9cf6ff, waveSpeed: 0.35, waveHeight: 0.06, roughness: 0.9, stars: 1, aurora: [0x4dffc0, 0x8a6cff] },
     beams: 0.18,
+    bloom: 0.5,
     music: { root: 66, scale: 'major' }, // F#
+    soundscape: { waves: 0.5, wind: 0.2 },
   },
 };

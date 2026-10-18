@@ -1,11 +1,18 @@
-import { Color, Mesh, MeshStandardMaterial, PlaneGeometry } from 'three';
+import { Color, Mesh, MeshStandardMaterial, PlaneGeometry, ShaderChunk } from 'three';
 import type { EraPreset } from '../data/eras';
 import { LAYOUT } from './layout';
 
 // Faceted ocean: waves are displaced in the vertex shader and flatShading
 // derives facet normals from them. Surf is shaded into the same surface so
 // wave crests can't slice through it. Era IV's starfield twinkles in the
-// water as unlit points.
+// water as unlit points. Shadows on the water are faint and fade out away
+// from the shore, so a low sun's long shadows read as shade, not black blades.
+
+/** Shadow strength on the water at the shoreline. */
+const WATER_SHADOW = 0.6;
+/** Distance past the shoreline over which water shadows fade out. */
+const WATER_SHADOW_FADE = 8;
+const SHADOW_NEEDLE = 'directionalLightShadow.shadowIntensity,';
 
 export class Ocean {
   readonly water: Mesh;
@@ -81,6 +88,11 @@ surf *= 0.7 + 0.3 * sin(shore * 14.0 - uTime * 2.4);
 diffuseColor.rgb = mix(diffuseColor.rgb, uFoam, clamp(surf, 0.0, 1.0) * 0.8 * uSurf);`,
         )
         .replace(
+          '#include <lights_fragment_begin>',
+          `float waterShadow = ${WATER_SHADOW.toFixed(2)} * (1.0 - smoothstep(uShore, uShore + ${WATER_SHADOW_FADE.toFixed(1)}, vDist));
+${waterLights()}`,
+        )
+        .replace(
           '#include <emissivemap_fragment>',
           `#include <emissivemap_fragment>
 if (uStars > 0.0) {
@@ -137,4 +149,11 @@ if (uAurora > 0.0) {
   setSurf(amount: number): void {
     this.uniforms.uSurf.value = amount;
   }
+}
+
+/** three's light loop with the sun's shadow scaled by `waterShadow`. */
+function waterLights(): string {
+  const chunk = ShaderChunk.lights_fragment_begin;
+  if (!chunk.includes(SHADOW_NEEDLE)) throw new Error('lights_fragment_begin changed: update the water shadow patch');
+  return chunk.split(SHADOW_NEEDLE).join('directionalLightShadow.shadowIntensity * waterShadow,');
 }

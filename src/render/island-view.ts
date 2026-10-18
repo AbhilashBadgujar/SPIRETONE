@@ -20,6 +20,7 @@ import type { ColumnId, Grid } from '../sim/grid';
 import type { Island } from '../sim/island';
 import { LAYOUT, columnAngle, columnTopY, columnX, columnZ } from './layout';
 import * as M from './meshes';
+import { GLOW_LUMINANCE } from './post';
 
 // Draws one island from sim state. sync() rebuilds every instance matrix from
 // scratch, which is cheap at 36 columns and is only called when state changes.
@@ -166,6 +167,8 @@ export class IslandView {
   private readonly solid = new MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.85 });
   private readonly glow = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   private readonly colors = {} as Record<Slot, Color>;
+  /** Lit windows, lamps and the crystal burn past the bloom threshold (render/post.ts). */
+  private bloom = false;
   private preset: EraPreset | null = null;
   private last: { island: Island; ev: Evaluation } | null = null;
 
@@ -285,6 +288,12 @@ export class IslandView {
     this.applyDrops();
   }
 
+  /** Brighten lit windows, lamps and the crystal past the bloom threshold, or back to plain. */
+  setBloom(on: boolean): void {
+    this.bloom = on;
+    this.applyGlow();
+  }
+
   /** Swell the spire crystal; it eases back on its own. */
   pulseCrystal(amount: number): void {
     this.crystalPulse = Math.max(this.crystalPulse, amount);
@@ -317,6 +326,15 @@ export class IslandView {
     }
   }
 
+  /** Glow scale: lifts the era's emissive color to GLOW_LUMINANCE while bloom is on. */
+  private applyGlow(): void {
+    const e = this.colors.emissive;
+    const luminance = 0.2126 * e.r + 0.7152 * e.g + 0.0722 * e.b;
+    const boost = this.bloom && luminance > 0 ? GLOW_LUMINANCE / luminance : 1;
+    this.glow.color.setScalar(boost);
+    this.crystalMaterial.color.copy(e).multiplyScalar(boost);
+  }
+
   applyPreset(p: EraPreset): void {
     this.preset = p;
     const c = this.colors;
@@ -338,7 +356,7 @@ export class IslandView {
     this.rockMaterial.color.copy(c.rock);
     this.sandMaterial.color.copy(c.sand);
     this.grassMaterial.color.copy(c.grass);
-    this.crystalMaterial.color.copy(c.emissive);
+    this.applyGlow();
 
     if (this.last) this.sync(this.last.island, this.last.ev);
   }
