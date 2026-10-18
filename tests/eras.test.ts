@@ -23,7 +23,7 @@ describe('GDD §6 era presets', () => {
     ERA_IDS.forEach((id, era) => {
       const astral = era >= CASCADE_MIN_ERA;
       expect(ERA_PRESETS[id].ocean.stars > 0, id).toBe(astral);
-      expect(ERA_PRESETS[id].ocean.aurora !== null, id).toBe(astral);
+      expect(ERA_PRESETS[id].sky.aurora !== null, id).toBe(astral);
     });
   });
 });

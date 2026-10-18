@@ -30,6 +30,8 @@ interface Floater {
 }
 
 const LIFE: Record<FloaterKind, number> = { pop: 1.1, gain: 1.5, tag: 1.6, bad: 0.9 };
+/** Ambient pops don't land within this many CSS pixels of another label; they skip their turn instead. */
+const PERSONAL_SPACE = { x: 64, y: 36 };
 const RISE: Record<FloaterKind, number> = { pop: 34, gain: 54, tag: 46, bad: 24 };
 /** A keyed floater younger than this absorbs the next one with its key. */
 const MERGE_WINDOW = 0.6;
@@ -82,6 +84,7 @@ export class Floaters {
   /** `content` is HTML, or a Merge for numbers that should add up. */
   at(local: Vector3, content: string | Merge, kind: FloaterKind): void {
     if (this.merge(content)) return;
+    if (kind === 'pop' && this.crowded(local)) return;
     const f = this.take(content, kind);
     if (!f) return;
     f.world = true;
@@ -121,6 +124,15 @@ export class Floaters {
       f.el.style.transform = `translate3d(${f.x.toFixed(1)}px, ${(f.y - f.rise * ease).toFixed(1)}px, 0) translate(-50%, -100%) scale(${scale.toFixed(3)})`;
       f.el.style.opacity = alpha.toFixed(3);
     }
+  }
+
+  /** Would a label at `local` land on top of one already showing? */
+  private crowded(local: Vector3): boolean {
+    if (!this.project(local, this.screen)) return true;
+    const { x, y } = this.screen;
+    return this.pool.some(
+      (f) => f.active && Math.abs(f.x - x) < PERSONAL_SPACE.x && Math.abs(f.y - y) < PERSONAL_SPACE.y,
+    );
   }
 
   /** Folds a keyed number into a young floater with the same key. */

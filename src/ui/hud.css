@@ -1,19 +1,23 @@
 :root {
-  --hud-ink: #ffffff;
-  --hud-dim: rgba(255, 255, 255, 0.4);
-  --hud-faint: rgba(255, 255, 255, 0.24);
-  --hud-track: rgba(255, 255, 255, 0.2);
-  --hud-glass-top: rgba(22, 40, 58, 0.74);
-  --hud-glass-bottom: rgba(10, 22, 34, 0.74);
-  --hud-glass: rgba(10, 22, 34, 0.62);
-  --hud-glass-edge: rgba(255, 255, 255, 0.16);
+  /* Warm cocoa wood and cream, not night-blue glass: a cozy signboard over the sea. */
+  --hud-ink: #fff6e8;
+  --hud-dim: rgba(255, 240, 220, 0.45);
+  --hud-faint: rgba(255, 240, 220, 0.26);
+  --hud-track: rgba(255, 236, 210, 0.2);
+  --hud-wood-rgb: 74, 48, 34;
+  --hud-wood-deep-rgb: 44, 28, 20;
+  --hud-veil-rgb: 34, 20, 12;
+  --hud-glass-top: rgba(var(--hud-wood-rgb), 0.8);
+  --hud-glass-bottom: rgba(var(--hud-wood-deep-rgb), 0.82);
+  --hud-glass: rgba(var(--hud-wood-deep-rgb), 0.68);
+  --hud-glass-edge: rgba(255, 226, 180, 0.22);
   --hud-gold: #ffd25e;
   --hud-gold-deep: #e8902a;
   --hud-mint: #7ef0cf;
   --hud-violet: #c3b2ff;
   --hud-danger: #ff6b6b;
-  --hud-core: #16283a;
-  --hud-core-hi: #3b5876;
+  --hud-core: #3a2518;
+  --hud-core-hi: #6e4a30;
   --hud-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   --hud-text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
   /* Bundled (main.ts), so every platform gets the same rounded face, not only Apple's ui-rounded. */
@@ -174,7 +178,7 @@ canvas {
   content: '';
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--tick, 20%) - 1.5px), rgba(10, 22, 34, 0.55) 0 var(--tick, 20%));
+  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--tick, 20%) - 1.5px), rgba(var(--hud-wood-deep-rgb), 0.55) 0 var(--tick, 20%));
 }
 
 .harmony-fill {
@@ -721,7 +725,7 @@ canvas {
   border: 1px solid var(--hud-glass-edge);
   border-radius: 999px;
   /* Opaque enough that the cursor chip never shows through. */
-  background: rgba(10, 22, 34, 0.9);
+  background: rgba(var(--hud-wood-deep-rgb), 0.9);
   font-size: 18px;
   font-weight: 900;
   letter-spacing: 0.16em;
@@ -742,7 +746,7 @@ canvas {
   border: 1px solid var(--hud-glass-edge);
   border-radius: 999px;
   color: var(--hud-gold);
-  background: rgba(10, 22, 34, 0.9);
+  background: rgba(var(--hud-wood-deep-rgb), 0.9);
   font-size: 18px;
   font-weight: 900;
 }
@@ -784,7 +788,7 @@ canvas {
   justify-content: center;
   gap: 26px;
   padding: 16px;
-  background: rgba(6, 14, 22, 0.5);
+  background: rgba(var(--hud-veil-rgb), 0.5);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
   pointer-events: auto;
@@ -918,7 +922,7 @@ canvas {
   border: 1px solid var(--hud-glass-edge);
   border-radius: 24px;
   /* Nearly solid: it sits on a blurred island and has small icons to read. */
-  background: linear-gradient(180deg, rgba(22, 40, 58, 0.94), rgba(10, 22, 34, 0.94));
+  background: linear-gradient(180deg, rgba(var(--hud-wood-rgb), 0.94), rgba(var(--hud-wood-deep-rgb), 0.94));
   box-shadow: var(--hud-shadow);
   cursor: default;
   text-shadow: var(--hud-text-shadow);
@@ -1088,7 +1092,7 @@ canvas {
   padding: 10px 14px;
   border: 1.5px solid rgba(255, 210, 94, 0.75);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(22, 40, 58, 0.96), rgba(10, 22, 34, 0.96));
+  background: linear-gradient(180deg, rgba(var(--hud-wood-rgb), 0.96), rgba(var(--hud-wood-deep-rgb), 0.96));
   box-shadow: var(--hud-shadow), 0 0 24px rgba(255, 210, 94, 0.25);
   color: var(--hud-ink);
   font-size: 15px;
@@ -1119,7 +1123,7 @@ canvas {
   width: 14px;
   height: 14px;
   border: 1.5px solid rgba(255, 210, 94, 0.75);
-  background: rgba(14, 28, 42, 0.98);
+  background: rgba(var(--hud-wood-deep-rgb), 0.98);
   rotate: 45deg;
 }
 
@@ -1163,7 +1167,7 @@ canvas {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(6, 14, 22, 0.6);
+  background: rgba(var(--hud-veil-rgb), 0.6);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   pointer-events: auto;
@@ -1179,7 +1183,7 @@ canvas {
   padding: 18px 18px 20px;
   border: 1px solid var(--hud-glass-edge);
   border-radius: 28px;
-  background: linear-gradient(180deg, rgba(22, 40, 58, 0.96), rgba(10, 22, 34, 0.96));
+  background: linear-gradient(180deg, rgba(var(--hud-wood-rgb), 0.96), rgba(var(--hud-wood-deep-rgb), 0.96));
   box-shadow: var(--hud-shadow);
   text-shadow: var(--hud-text-shadow);
   animation: era-rise 0.4s ease-out both;
@@ -1358,7 +1362,7 @@ canvas {
     z-index: 5;
     padding: 5px 9px;
     border-radius: 8px;
-    background: rgba(8, 16, 26, 0.92);
+    background: rgba(var(--hud-wood-deep-rgb), 0.92);
     color: var(--hud-ink);
     font-size: 12px;
     font-weight: 800;

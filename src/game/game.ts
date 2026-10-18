@@ -4,6 +4,7 @@ import { ERA_IDS, type EraIndex } from '../data/ids';
 import type { NodeId } from '../data/tree';
 import { Ambience } from '../render/ambience';
 import { CursorView, type CursorState } from '../render/cursor-view';
+import { dayPhase, lightAt, newLight } from '../render/daylight';
 import { Flock } from '../render/flock';
 import { Gulls } from '../render/gulls';
 import { DROP_FALL_HEIGHT, IslandView } from '../render/island-view';
@@ -54,6 +55,8 @@ export interface CursorInfo {
 }
 
 const FACE_TURN = 6;
+/** Seconds between time-of-day updates; the light moves far too slowly to need every frame. */
+const DAYLIGHT_EVERY = 0.25;
 /** Surf is gone once the island is this far out of the water. */
 const SURF_FADE_HEIGHT = 0.8;
 /** Headroom above a column top for HUD anchors, clear of roofs and lamps. */
@@ -100,6 +103,8 @@ export class Game {
   };
   private era: EraIndex;
   private time = 0;
+  private readonly light = newLight();
+  private daylightClock = 0;
   /** Running Ascension sequence, or null. */
   private ascension: { t: number; shards: number; phase: 'rise' | 'descend' | 'settle' } | null = null;
   private pauseReason: PauseReason | null = null;
@@ -351,6 +356,11 @@ export class Game {
     this.gulls.update(this.time);
     this.flock.setCount(effectsOf(this.state.meta.nodes).gulls, this.time);
     this.flock.update(dt, this.time);
+    this.daylightClock -= dt;
+    if (this.daylightClock <= 0) {
+      this.daylightClock = DAYLIGHT_EVERY;
+      this.applyDaylight();
+    }
 
     this.stage.update(dt);
     this.stage.render();
@@ -510,6 +520,15 @@ export class Game {
     this.life.applyPreset(preset);
     // Ambient gulls are Era I's particle system; worker Gulls fly in every era.
     this.gulls.mesh.visible = preset.ambient === 'gulls';
+    this.applyDaylight();
+  }
+
+  /** The era's look for this moment of its day (render/daylight.ts). */
+  private applyDaylight(): void {
+    lightAt(ERA_PRESETS[ERA_IDS[this.era]], dayPhase(this.time), this.light);
+    this.stage.applyLight(this.light);
+    this.ocean.applyLight(this.light);
+    this.view.setWindowsLit(this.light.windows);
   }
 }
 

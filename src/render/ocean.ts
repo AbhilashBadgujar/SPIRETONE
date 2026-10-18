@@ -1,5 +1,6 @@
 import { Color, Mesh, MeshStandardMaterial, PlaneGeometry, ShaderChunk } from 'three';
 import type { EraPreset } from '../data/eras';
+import type { Light } from './daylight';
 import { LAYOUT } from './layout';
 
 // Faceted ocean: waves are displaced in the vertex shader and flatShading
@@ -7,12 +8,20 @@ import { LAYOUT } from './layout';
 // wave crests can't slice through it. Era IV's starfield twinkles in the
 // water as unlit points. Shadows on the water are faint and fade out away
 // from the shore, so a low sun's long shadows read as shade, not black blades.
+//
+// The sea takes no scene fog. Far out it mirrors the sky (more the lower you
+// look across it), then hazes into the horizon color (sky.bottom) itself,
+// before tone mapping, all the way before its far edge: the sky dome
+// (sky.ts) is that color at and below the horizon, so sea and sky meet
+// without a seam on either render path.
 
 /** Shadow strength on the water at the shoreline. */
 const WATER_SHADOW = 0.6;
 /** Distance past the shoreline over which water shadows fade out. */
 const WATER_SHADOW_FADE = 8;
 const SHADOW_NEEDLE = 'directionalLightShadow.shadowIntensity,';
+/** Distance from the island over which the sea fades fully into the horizon haze (the plane ends at 130). */
+const HAZE = { from: 55, to: 125 };
 
 export class Ocean {
   readonly water: Mesh;
@@ -28,14 +37,15 @@ export class Ocean {
     /** 0..1; fades out while the island is lifted during Ascension. */
     uSurf: { value: 1 },
     uStars: { value: 0 },
-    uAurora: { value: 0 },
-    uAuroraNear: { value: new Color() },
-    uAuroraFar: { value: new Color() },
+    uHaze: { value: new Color() },
+    uHazeDensity: { value: 0 },
+    /** The sky just above the horizon, which the far sea mirrors. */
+    uSky: { value: new Color() },
   };
   private readonly material: MeshStandardMaterial;
 
   constructor() {
-    const material = new MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.3 });
+    const material = new MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.3, fog: false });
     this.material = material;
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms);
@@ -47,7 +57,8 @@ uniform float uTime;
 uniform float uWaveHeight;
 uniform float uWaveSpeed;
 varying float vDist;
-varying vec2 vXZ;`,
+varying vec2 vXZ;
+varying float vDepth;`,
         )
         .replace(
           '#include <begin_vertex>',
@@ -58,6 +69,11 @@ transformed.y += uWaveHeight * (sin(p.x * 0.35 + t * 1.3) + sin(p.y * 0.42 - t *
   + 0.6 * sin((p.x + p.y) * 0.8 + t * 2.1));
 vDist = length(p);
 vXZ = p;`,
+        )
+        .replace(
+          '#include <project_vertex>',
+          `#include <project_vertex>
+vDepth = -mvPosition.z;`,
         );
       shader.fragmentShader = shader.fragmentShader
         .replace(
@@ -70,11 +86,12 @@ uniform vec3 uFoam;
 uniform float uShore;
 uniform float uSurf;
 uniform float uStars;
-uniform float uAurora;
-uniform vec3 uAuroraNear;
-uniform vec3 uAuroraFar;
+uniform vec3 uHaze;
+uniform float uHazeDensity;
+uniform vec3 uSky;
 varying float vDist;
-varying vec2 vXZ;`,
+varying vec2 vXZ;
+varying float vDepth;`,
         )
         .replace(
           '#include <color_fragment>',
@@ -106,19 +123,17 @@ if (uStars > 0.0) {
   float star = step(0.9, h) * smoothstep(0.075, 0.0, d) * twinkle;
   star *= smoothstep(uShore + 0.6, uShore + 3.0, vDist);
   totalEmissiveRadiance += mix(vec3(0.75, 0.85, 1.0), uFoam, 0.4) * star * uStars * 1.6;
-}
-if (uAurora > 0.0) {
-  // Two wavering curtains of light lying on the far water behind the island
-  // (the camera looks toward -z), shimmering along their length.
-  float z = -vXZ.y;
-  float w1 = z - 15.0 - 2.5 * sin(vXZ.x * 0.11 + uTime * 0.07);
-  float w2 = z - 24.0 - 3.5 * sin(vXZ.x * 0.08 - uTime * 0.05 + 1.7);
-  float shimmer = 0.6 + 0.4 * sin(vXZ.x * 0.9 + uTime * 0.6) * sin(vXZ.x * 0.37 - uTime * 0.4);
-  // Fine vertical streaks so it reads as curtains, not blobs.
-  shimmer *= 0.75 + 0.25 * sin(vXZ.x * 3.1 + 2.0 * sin(z * 0.4 + uTime * 0.3));
-  vec3 a = uAuroraNear * exp(-w1 * w1 / 10.0) + uAuroraFar * exp(-w2 * w2 / 18.0);
-  totalEmissiveRadiance += a * shimmer * uAurora * 0.45;
 }`,
+        )
+        .replace(
+          '#include <tonemapping_fragment>',
+          `// Fresnel off the calm surface (not the facets, which would glitter in bands).
+vec3 seaUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+float grazing = pow(1.0 - clamp(dot(seaUp, normalize(vViewPosition)), 0.0, 1.0), 5.0);
+gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, grazing * 0.85);
+float fogged = 1.0 - exp(-uHazeDensity * uHazeDensity * vDepth * vDepth);
+gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, max(fogged, smoothstep(${HAZE.from.toFixed(1)}, ${HAZE.to.toFixed(1)}, vDist)));
+#include <tonemapping_fragment>`,
         );
     };
 
@@ -127,19 +142,21 @@ if (uAurora > 0.0) {
     this.water.receiveShadow = true;
   }
 
+  /** What doesn't drift with the time of day; colors come in through applyLight. */
   applyPreset(p: EraPreset): void {
-    this.uniforms.uShallow.value.setHex(p.ocean.shallow);
-    this.uniforms.uDeep.value.setHex(p.ocean.deep);
     this.uniforms.uFoam.value.setHex(p.ocean.foam);
     this.uniforms.uWaveHeight.value = p.ocean.waveHeight;
     this.uniforms.uWaveSpeed.value = p.ocean.waveSpeed;
     this.uniforms.uStars.value = p.ocean.stars;
-    this.uniforms.uAurora.value = p.ocean.aurora ? 1 : 0;
-    if (p.ocean.aurora) {
-      this.uniforms.uAuroraNear.value.setHex(p.ocean.aurora[0]);
-      this.uniforms.uAuroraFar.value.setHex(p.ocean.aurora[1]);
-    }
     this.material.roughness = p.ocean.roughness;
+  }
+
+  applyLight(l: Light): void {
+    this.uniforms.uShallow.value.copy(l.shallow);
+    this.uniforms.uDeep.value.copy(l.deep);
+    this.uniforms.uHaze.value.copy(l.skyBottom);
+    this.uniforms.uSky.value.copy(l.skyBottom);
+    this.uniforms.uHazeDensity.value = l.fogDensity;
   }
 
   update(time: number): void {

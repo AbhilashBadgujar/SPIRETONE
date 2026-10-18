@@ -59,6 +59,8 @@ export interface LifeSpots {
 }
 
 const GOLD = new Color(0xffc83c);
+/** Window glass brightness when unlit: the emissive color, dimmed to dark glass. */
+const WINDOW_DARK = 0.13;
 /** Beach scenery sits on the sand between the outer columns, clear of piers and plazas. */
 const BEACH_RADIUS = LAYOUT.islandRadius - 0.15;
 /** Garden ring round the spire, inside the path villagers stroll (life.ts). */
@@ -193,6 +195,9 @@ export class IslandView {
 
   private readonly solid = new MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.85 });
   private readonly glow = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+  /** Windows glow too, dimmed down to dark glass while the era's day is bright (daylight.ts). */
+  private readonly windowGlass = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+  private windowsLit = 0;
   private readonly colors = {} as Record<Slot, Color>;
   /** Lit windows, lamps and the crystal burn past the bloom threshold (render/post.ts). */
   private bloom = false;
@@ -250,8 +255,9 @@ export class IslandView {
     const around = grid.k.K_INDICES * 2;
 
     this.blocks = kind([{ geometry: M.blockGeometry(), slot: 'base' }], n * maxCap);
-    this.windows = kind([{ geometry: M.windowGeometry(), slot: 'window' }], n * maxCap);
-    this.groundWindows = kind([{ geometry: M.windowGeometry(false), slot: 'window' }], n);
+    this.windows = kind([{ geometry: M.windowGeometry(), slot: 'window', glow: true }], n * maxCap);
+    this.groundWindows = kind([{ geometry: M.windowGeometry(false), slot: 'window', glow: true }], n);
+    for (const k of [this.windows, this.groundWindows]) k.meshes[0].material = this.windowGlass;
     this.doors = kind(
       [
         { geometry: M.awningGeometry(), slot: 'roof' },
@@ -423,11 +429,19 @@ export class IslandView {
     }
   }
 
+  /** 0 dark glass .. 1 lit: windows (and door lanterns) follow the era's time of day. */
+  setWindowsLit(lit: number): void {
+    this.windowsLit = lit;
+    this.applyGlow();
+  }
+
   private applyGlow(): void {
     const e = this.colors.emissive;
     const boost = glowScale(e, this.bloom);
     this.glow.color.setScalar(boost);
     this.crystalMaterial.color.copy(e).multiplyScalar(boost);
+    this.windowGlass.color.setScalar(WINDOW_DARK + (boost - WINDOW_DARK) * this.windowsLit);
+    this.doors.meshes[2].visible = this.windowsLit > 0.5;
   }
 
   applyPreset(p: EraPreset): void {
@@ -448,15 +462,7 @@ export class IslandView {
     c.flower.setHex(p.flora.flowers[0]);
     this.paints.length = 0;
     for (const hex of p.flora.flowers) this.paints.push(new Color(hex));
-    if (p.litWindows) c.window.setHex(p.palette.emissive);
-    else c.window.setHex(p.palette.accent).multiplyScalar(0.45);
-
-    for (const kind of [this.windows, this.groundWindows]) {
-      kind.meshes[0].material = p.litWindows ? this.glow : this.solid;
-      kind.meshes[0].castShadow = !p.litWindows;
-    }
-    // Door lanterns only once the windows are lit.
-    this.doors.meshes[2].visible = p.litWindows;
+    c.window.setHex(p.palette.emissive);
     this.solid.roughness = p.roughness;
     this.rockMaterial.color.copy(c.rock);
     this.sandMaterial.color.copy(c.sand);

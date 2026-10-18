@@ -87,7 +87,7 @@
     radial-gradient(1px 1px at 86% 61%, var(--star), transparent),
     radial-gradient(1px 1px at 93% 14%, var(--star), transparent),
     radial-gradient(1px 1px at 6% 86%, var(--star), transparent),
-    radial-gradient(ellipse at 50% 42%, rgba(34, 46, 86, 0.88), rgba(6, 10, 24, 0.95));
+    radial-gradient(ellipse at 50% 42%, rgba(78, 48, 58, 0.9), rgba(26, 15, 12, 0.96));
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
   pointer-events: auto;
@@ -224,7 +224,7 @@
   border: 2px solid rgba(255, 255, 255, 0.12);
   border-radius: 50%;
   color: rgba(255, 255, 255, 0.25);
-  background: radial-gradient(circle at 50% 30%, #22344a, #0e1a28);
+  background: radial-gradient(circle at 50% 30%, #4a3326, #24160f);
   font: inherit;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -267,7 +267,7 @@
 
 .tree-node[data-state='owned'] {
   border-color: rgba(255, 255, 255, 0.6);
-  color: #0d1826;
+  color: #2a170c;
   background: radial-gradient(circle at 50% 30%, #ffffff, var(--c) 72%);
   box-shadow: 0 0 16px color-mix(in srgb, var(--c) 60%, transparent);
 }
@@ -317,7 +317,7 @@
   padding: 1px 6px 1px 4px;
   border-radius: 999px;
   translate: -50% 0;
-  background: rgba(8, 16, 26, 0.88);
+  background: rgba(var(--hud-wood-deep-rgb), 0.9);
   color: var(--hud-ink);
   font-size: 11px;
   font-weight: 900;
@@ -383,13 +383,13 @@
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  color: #0d1826;
+  color: #2a170c;
   background: radial-gradient(circle at 50% 30%, #ffffff, var(--c) 72%);
 }
 
 .tree-card[data-state='locked'] .tree-card-icon {
   color: rgba(255, 255, 255, 0.35);
-  background: #1a2a3c;
+  background: #3a2618;
 }
 
 .tree-card-icon svg {
@@ -503,7 +503,7 @@
 }
 
 .tree-card[data-state='owned'] .tree-buy {
-  color: #0d1826;
+  color: #2a170c;
   background: var(--c);
 }
 

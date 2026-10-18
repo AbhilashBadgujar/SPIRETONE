@@ -1,6 +1,5 @@
 import {
   ACESFilmicToneMapping,
-  CanvasTexture,
   DirectionalLight,
   FogExp2,
   Group,
@@ -8,30 +7,40 @@ import {
   PCFShadowMap,
   PerspectiveCamera,
   Scene,
-  SRGBColorSpace,
   Vector2,
   Vector3,
   WebGLRenderer,
 } from 'three';
 import type { EraPreset } from '../data/eras';
 import type { RenderLevel } from '../game/quality';
+import type { Light } from './daylight';
 import { LAYOUT, columnTopY } from './layout';
 import { Post } from './post';
+import { Sky } from './sky';
 
 // Renderer, lights, sky and the fixed camera (GDD §1: fixed, framed on the
-// island, auto-dolly to fit the tallest column).
+// island, auto-dolly to fit the tallest column). The camera sits low enough
+// to see a strip of sky over the sea, and drifts a touch while idle.
 
 export const CAMERA = {
-  fov: 30,
-  elevationDeg: 30,
+  /** Low and wide enough that the horizon sits near the top of the frame. */
+  fov: 50,
+  elevationDeg: 21,
   /** NDC box the island must fit inside; the margins leave room for the HUD. */
-  ndcX: 0.9,
-  ndcTop: 0.62,
+  ndcX: 0.92,
+  ndcTop: 0.64,
   /** Clears the Ascend button at bottom-center. */
   ndcBottom: -0.66,
   /** Higher = snappier dolly. */
   smoothing: 2.5,
 };
+
+/**
+ * Idle drift: a slow sway around the island and a breath of tilt, in radians,
+ * over two incommensurate periods (seconds) so it never visibly repeats.
+ * Off for prefers-reduced-motion.
+ */
+const DRIFT = { sway: 0.035, swayFine: 0.012, tilt: 0.006, periods: [53, 23, 37] };
 
 /** Headroom above a column's top block for roofs and lamps. */
 const CAP_ALLOWANCE = 0.8;
@@ -56,8 +65,9 @@ export class Stage {
   private readonly sun = new DirectionalLight();
   private readonly skyLight = new HemisphereLight();
   private readonly fog = new FogExp2(0xffffff, 0.01);
-  private readonly skyCanvas = document.createElement('canvas');
-  private readonly skyTexture: CanvasTexture;
+  private readonly sky = new Sky();
+  private readonly still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  private clock = 0;
   /** Scratch camera for fitting, so the real one never jumps mid-search. */
   private readonly probe = new PerspectiveCamera(CAMERA.fov, 1, 0.1, 400);
   private ringHeights: readonly number[] = [];
@@ -80,11 +90,6 @@ export class Stage {
     canvas.style.height = '100%';
     container.appendChild(canvas);
 
-    this.skyCanvas.width = 2;
-    this.skyCanvas.height = 256;
-    this.skyTexture = new CanvasTexture(this.skyCanvas);
-    this.skyTexture.colorSpace = SRGBColorSpace;
-    this.scene.background = this.skyTexture;
     this.scene.fog = this.fog;
 
     this.sun.castShadow = true;
@@ -98,36 +103,35 @@ export class Stage {
     sc.near = 1;
     sc.far = 60;
 
-    this.scene.add(this.turntable, this.skyLight, this.sun, this.sun.target);
+    this.scene.add(this.sky.mesh, this.turntable, this.skyLight, this.sun, this.sun.target);
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
   }
 
+  /** What doesn't drift with the time of day; the rest comes in through applyLight. */
   applyPreset(p: EraPreset): void {
-    const ctx = this.skyCanvas.getContext('2d')!;
-    const g = ctx.createLinearGradient(0, 0, 0, this.skyCanvas.height);
-    g.addColorStop(0, hex(p.sky.top));
-    g.addColorStop(1, hex(p.sky.bottom));
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, this.skyCanvas.width, this.skyCanvas.height);
-    this.skyTexture.needsUpdate = true;
+    this.sky.setNight(p.ocean.stars, p.sky.aurora);
+  }
 
-    this.fog.color.setHex(p.fog.color);
-    this.fog.density = p.fog.density;
+  /** Sun, sky, fog and bloom for this moment of the era's day (daylight.ts). */
+  applyLight(l: Light): void {
+    this.sky.setColors(l.skyTop, l.skyBottom);
+    this.fog.color.copy(l.fogColor);
+    this.fog.density = l.fogDensity;
 
-    this.skyLight.color.setHex(p.skyLight.sky);
-    this.skyLight.groundColor.setHex(p.skyLight.ground);
-    this.skyLight.intensity = p.skyLight.intensity;
+    this.skyLight.color.copy(l.skyColor);
+    this.skyLight.groundColor.copy(l.groundColor);
+    this.skyLight.intensity = l.skyIntensity;
 
-    const el = deg(p.sun.elevation);
-    const az = deg(p.sun.azimuth);
-    this.sun.color.setHex(p.sun.color);
-    this.sun.intensity = p.sun.intensity;
+    const el = deg(l.sunElevation);
+    const az = deg(l.sunAzimuth);
+    this.sun.color.copy(l.sunColor);
+    this.sun.intensity = l.sunIntensity;
     this.sun.position.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(25);
     this.fitShadow(this.framePoints());
 
-    this.post.bloomStrength = p.bloom;
+    this.post.bloomStrength = l.bloom;
   }
 
   /** Pixel ratio, shadow resolution and post-processing (game/quality.ts). */
@@ -155,7 +159,11 @@ export class Stage {
     this.snap = false;
     this.current.distance += (this.goal.distance - this.current.distance) * t;
     this.current.targetY += (this.goal.targetY - this.current.targetY) * t;
-    aim(this.camera, this.current.distance, this.current.targetY);
+    this.clock += dt;
+    const [a, b, c] = DRIFT.periods.map((period) => Math.sin((this.clock / period) * Math.PI * 2));
+    const still = this.still ? 0 : 1;
+    aim(this.camera, this.current.distance, this.current.targetY, still * (DRIFT.sway * a + DRIFT.swayFine * b), still * DRIFT.tilt * c);
+    this.sky.update(this.clock, this.camera.position);
   }
 
   render(): void {
@@ -254,12 +262,10 @@ export class Stage {
   }
 }
 
-function aim(cam: PerspectiveCamera, distance: number, targetY: number): void {
-  const el = deg(CAMERA.elevationDeg);
-  cam.position.set(0, targetY + distance * Math.sin(el), distance * Math.cos(el));
+/** `sway` turns the camera round the island and `tilt` lifts it, both in radians (the idle drift). */
+function aim(cam: PerspectiveCamera, distance: number, targetY: number, sway = 0, tilt = 0): void {
+  const el = deg(CAMERA.elevationDeg) + tilt;
+  const flat = distance * Math.cos(el);
+  cam.position.set(Math.sin(sway) * flat, targetY + distance * Math.sin(el), Math.cos(sway) * flat);
   cam.lookAt(0, targetY, 0);
-}
-
-function hex(n: number): string {
-  return `#${n.toString(16).padStart(6, '0')}`;
 }

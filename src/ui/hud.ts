@@ -35,10 +35,10 @@ import { TreeScreen } from './tree-screen';
 //   pause       play button and the trophy shelf
 
 const ROMAN = ['I', 'II', 'III', 'IV'];
-/** Seconds between ambient "+N" pops anywhere on the island. */
-const POP_SPACING = 0.45;
+/** Seconds between ambient "+N" pops anywhere on the island: an occasional reminder, not a ticker. */
+const POP_SPACING = 1.4;
 /** A column pops at most this often; each pop shows what it earned since its last. */
-const POP_MIN_GAP = 2.5;
+const POP_MIN_GAP = 6;
 /** Keep some floaters free for drop feedback. */
 const POP_RESERVE = 8;
 /** Beyond this many new bridges in one drop, show a single "×N" tag. */
