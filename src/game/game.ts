@@ -8,6 +8,7 @@ import { Flock } from '../render/flock';
 import { Gulls } from '../render/gulls';
 import { DROP_FALL_HEIGHT, IslandView } from '../render/island-view';
 import { Juice } from '../render/juice';
+import { Life } from '../render/life';
 import { LAYOUT, columnAngle, columnTopY, columnX, columnZ } from '../render/layout';
 import { Ocean } from '../render/ocean';
 import { Stage } from '../render/scene';
@@ -72,6 +73,8 @@ export class Game {
   private readonly flock = new Flock();
   private readonly juice: Juice;
   private readonly ambience: Ambience;
+  /** Villagers, boats, smoke, fireflies and fish. */
+  private readonly life: Life;
   private readonly orbit: OrbitCursor;
 
   private readonly raycaster = new Raycaster();
@@ -123,6 +126,9 @@ export class Game {
       () => this.state.run.evaluation,
     );
     this.stage.turntable.add(...this.ambience.meshes);
+    this.life = new Life(this.ocean);
+    this.view.root.add(this.life.root);
+    this.stage.scene.add(this.life.sea);
 
     this.era = state.run.island.era;
     this.applyEra();
@@ -186,6 +192,7 @@ export class Game {
   applyQuality(level: RenderLevel): void {
     this.stage.applyQuality(level);
     this.view.setBloom(level.bloom);
+    this.life.setBloom(level.bloom);
   }
 
   /** Buys a tree node. Yield bonuses apply to this island at once; eras from the next. */
@@ -340,6 +347,7 @@ export class Game {
     this.juice.update(dt, this.time);
     this.ambience.update(dt);
     this.ocean.update(this.time);
+    this.life.update(dt, this.time, !this.ascension);
     this.gulls.update(this.time);
     this.flock.setCount(effectsOf(this.state.meta.nodes).gulls, this.time);
     this.flock.update(dt, this.time);
@@ -487,6 +495,7 @@ export class Game {
   private refreshIsland(): void {
     this.version++;
     this.view.sync(this.state.run.island, this.state.run.evaluation);
+    this.life.sync(this.view.spots);
     this.stage.frameColumns(this.view.ringMaxHeights);
   }
 
@@ -498,6 +507,7 @@ export class Game {
     this.juice.applyPreset(preset);
     this.flock.applyPreset(preset);
     this.ambience.applyPreset(preset);
+    this.life.applyPreset(preset);
     // Ambient gulls are Era I's particle system; worker Gulls fly in every era.
     this.gulls.mesh.visible = preset.ambient === 'gulls';
   }

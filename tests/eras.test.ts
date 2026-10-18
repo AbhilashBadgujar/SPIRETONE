@@ -15,6 +15,10 @@ describe('GDD §6 era presets', () => {
     ERA_IDS.forEach((id, era) => expect(ERA_PRESETS[id].gears, id).toBe(era >= MODIFIER_MIN_ERA.MOD_OVERCLOCK));
   });
 
+  it('send fireflies out only after dark, from golden hour on', () => {
+    expect(ERA_IDS.map((id) => ERA_PRESETS[id].fireflies !== null)).toEqual([false, true, true, true]);
+  });
+
   it('keep the starfield ocean and aurora to the Astral era', () => {
     ERA_IDS.forEach((id, era) => {
       const astral = era >= CASCADE_MIN_ERA;

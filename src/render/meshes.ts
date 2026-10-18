@@ -3,6 +3,7 @@ import {
   BufferGeometry,
   ConeGeometry,
   CylinderGeometry,
+  DodecahedronGeometry,
   ExtrudeGeometry,
   IcosahedronGeometry,
   OctahedronGeometry,
@@ -14,7 +15,10 @@ import { LAYOUT } from './layout';
 
 // Procedural low-poly placeholders for the GDD's 10-mesh budget:
 // block, cottage roof, pier, tower cap, lighthouse lamp, plaza tile, bridge,
-// island base, ocean (ocean.ts), gull (gulls.ts).
+// island base, ocean (ocean.ts), gull (gulls.ts). Past the budget, for the
+// lived-in look: building dressing (doors, trims, chimneys, flower boxes,
+// laundry), scenery (plots, tufts, flowers, bushes, trees, rocks) and the
+// island's life (boats, villagers and fish, in life.ts).
 //
 // Every geometry is in column-local space: origin on the surface it stands
 // on, +z away from the island center, +x toward the next index. Pieces are
@@ -44,25 +48,133 @@ export function blockGeometry(): BufferGeometry {
   return merge(new RoundedBoxGeometry(W, H, D, 2, 0.05).translate(0, H / 2, 0));
 }
 
-export function windowGeometry(): BufferGeometry {
-  const w = 0.17;
-  const h = 0.2;
-  const t = 0.03;
-  const y = H * 0.55;
-  return merge(
-    new BoxGeometry(w, h, t).translate(0, y, D / 2),
+const WINDOW = { w: 0.17, h: 0.2, t: 0.03, y: H * 0.55 };
+
+/** `front`: include the outward (+z) window; ground floors put their door there instead. */
+export function windowGeometry(front = true): BufferGeometry {
+  const { w, h, t, y } = WINDOW;
+  const parts = [
     new BoxGeometry(w, h, t).translate(0, y, -D / 2),
     new BoxGeometry(t, h, w).translate(W / 2, y, 0),
     new BoxGeometry(t, h, w).translate(-W / 2, y, 0),
+  ];
+  if (front) parts.push(new BoxGeometry(w, h, t).translate(0, y, D / 2));
+  return merge(...parts);
+}
+
+// --- building dressing -------------------------------------------------------
+
+/** Ground-floor door on the outward face. */
+export function doorGeometry(): BufferGeometry {
+  return merge(new BoxGeometry(0.2, 0.3, 0.03).translate(0, 0.15, D / 2 + 0.005));
+}
+
+/** Canvas awning over the door, tipped down and out. */
+export function awningGeometry(): BufferGeometry {
+  return merge(new BoxGeometry(0.3, 0.025, 0.13).rotateX(0.38).translate(0, 0.35, D / 2 + 0.055));
+}
+
+/** Little lantern beside the door (lit eras). */
+export function doorLanternGeometry(): BufferGeometry {
+  return merge(new BoxGeometry(0.05, 0.075, 0.05).translate(0.17, 0.25, D / 2 + 0.03));
+}
+
+/** Band over the joint between two floors, so a stack reads as one building. Origin on the joint. */
+export function trimGeometry(): BufferGeometry {
+  return merge(new BoxGeometry(W + 0.05, 0.045, D + 0.05));
+}
+
+/** Window box under a floor's outward window: blooms first (tinted), then the box. */
+export function flowerBloomsGeometry(): BufferGeometry {
+  const y = WINDOW.y - WINDOW.h / 2 + 0.005;
+  return merge(
+    ...[-0.075, -0.025, 0.025, 0.075].map((x, i) =>
+      new IcosahedronGeometry(0.03, 0).translate(x, y + (i % 2) * 0.01, D / 2 + 0.045),
+    ),
   );
 }
 
-/** Flat tile marking an empty, droppable column. */
-export function markerGeometry(): BufferGeometry {
-  return merge(new RoundedBoxGeometry(0.5, 0.025, 0.5, 1, 0.01).translate(0, 0.0125, 0));
+export function flowerBoxGeometry(): BufferGeometry {
+  return merge(new BoxGeometry(0.23, 0.05, 0.07).translate(0, WINDOW.y - WINDOW.h / 2 - 0.03, D / 2 + 0.04));
+}
+
+/** One piece of washing, hung by its top edge (origin) and lying along the bridge. */
+export function laundryGeometry(): BufferGeometry {
+  return merge(new BoxGeometry(0.012, 0.11, 0.09).translate(0, -0.055, 0));
+}
+
+// --- scenery -----------------------------------------------------------------
+
+/** Soft round patch marking an empty, droppable column (replaces the old square tile). */
+export function plotGeometry(): BufferGeometry {
+  return merge(new CylinderGeometry(0.3, 0.33, 0.02, 12).translate(0, 0.01, 0));
+}
+
+/** Three blades of grass. */
+export function tuftGeometry(): BufferGeometry {
+  return merge(
+    new ConeGeometry(0.022, 0.13, 3).translate(0, 0.065, 0),
+    new ConeGeometry(0.02, 0.1, 3).rotateZ(0.35).translate(0.03, 0.045, 0.01),
+    new ConeGeometry(0.02, 0.09, 3).rotateX(-0.4).translate(-0.01, 0.04, -0.03),
+  );
+}
+
+export function bloomGeometry(): BufferGeometry {
+  return merge(new IcosahedronGeometry(0.032, 0).translate(0, 0.1, 0));
+}
+
+export function stemGeometry(): BufferGeometry {
+  return merge(new CylinderGeometry(0.008, 0.008, 0.09, 3).translate(0, 0.045, 0));
+}
+
+export function bushGeometry(): BufferGeometry {
+  return merge(
+    new IcosahedronGeometry(0.17, 0).scale(1, 0.75, 1).translate(0, 0.1, 0),
+    new IcosahedronGeometry(0.11, 0).translate(0.1, 0.07, 0.06),
+  );
+}
+
+/** Round tree: canopy first (tinted), then trunk. */
+export function treeCanopyGeometry(): BufferGeometry {
+  return merge(
+    new IcosahedronGeometry(0.22, 0).translate(0, 0.44, 0),
+    new IcosahedronGeometry(0.15, 0).translate(0.1, 0.58, 0.05),
+  );
+}
+
+export function treeTrunkGeometry(): BufferGeometry {
+  return merge(new CylinderGeometry(0.035, 0.05, 0.32, 5).translate(0, 0.16, 0));
+}
+
+/** Pine (or cypress, scaled thin): stacked cones, then a short trunk. */
+export function pineCanopyGeometry(): BufferGeometry {
+  return merge(
+    new ConeGeometry(0.2, 0.3, 6).translate(0, 0.28, 0),
+    new ConeGeometry(0.15, 0.26, 6).translate(0, 0.45, 0),
+    new ConeGeometry(0.1, 0.22, 6).translate(0, 0.6, 0),
+  );
+}
+
+export function pineTrunkGeometry(): BufferGeometry {
+  return merge(new CylinderGeometry(0.03, 0.04, 0.16, 5).translate(0, 0.08, 0));
+}
+
+export function boulderGeometry(): BufferGeometry {
+  return merge(new DodecahedronGeometry(0.12, 0).scale(1, 0.6, 0.85).translate(0, 0.035, 0));
 }
 
 // --- cottage roof ----------------------------------------------------------
+
+/** Chimney through the cottage roof's inner slope. Its top is CHIMNEY_TOP. */
+export const CHIMNEY_TOP = { x: 0.2, y: 0.47, z: -0.13 };
+
+export function chimneyGeometry(): BufferGeometry {
+  const { x, y, z } = CHIMNEY_TOP;
+  return merge(
+    new BoxGeometry(0.1, 0.3, 0.1).translate(x, y - 0.15, z),
+    new BoxGeometry(0.13, 0.04, 0.13).translate(x, y - 0.02, z),
+  );
+}
 
 export function cottageRoofGeometry(): BufferGeometry {
   const span = D + 0.16;
@@ -211,6 +323,54 @@ export function bridgeGearGeometry(): BufferGeometry {
     );
   }
   return merge(...parts);
+}
+
+// --- life (life.ts) ---------------------------------------------------------
+
+/** A villager, about two-fifths of a floor tall: body (clothes) and head (skin). Origin at the feet. */
+export function personBodyGeometry(): BufferGeometry {
+  return merge(new CylinderGeometry(0.03, 0.046, 0.13, 6).translate(0, 0.065, 0));
+}
+
+export function personHeadGeometry(): BufferGeometry {
+  return merge(new IcosahedronGeometry(0.037, 0).translate(0, 0.167, 0));
+}
+
+/** Held out over the water from a standing villager's hands. */
+export function fishingRodGeometry(): BufferGeometry {
+  return merge(new CylinderGeometry(0.005, 0.007, 0.5, 3).translate(0, 0.25, 0).rotateX(0.95).translate(0.05, 0.1, 0.03));
+}
+
+/** Rowing boat, bow toward -z: painted hull, then the wooden inside and its seat. */
+export function boatHullGeometry(): BufferGeometry {
+  const s = new Shape();
+  s.moveTo(-0.27, 0.1);
+  s.lineTo(0.25, 0.1);
+  s.lineTo(0.33, 0.15);
+  s.lineTo(0.2, -0.03);
+  s.lineTo(-0.22, -0.03);
+  s.lineTo(-0.3, 0.12);
+  s.closePath();
+  return merge(new ExtrudeGeometry(s, { depth: 0.2, bevelEnabled: false }).translate(0, 0, -0.1).rotateY(Math.PI / 2));
+}
+
+export function boatInsideGeometry(): BufferGeometry {
+  return merge(
+    new BoxGeometry(0.16, 0.012, 0.44).translate(0, 0.101, 0.01),
+    new BoxGeometry(0.19, 0.03, 0.05).translate(0, 0.12, 0.06),
+  );
+}
+
+/** Small fish, nose toward +z. */
+export function fishGeometry(): BufferGeometry {
+  return merge(
+    new OctahedronGeometry(0.07, 0).scale(0.45, 0.65, 1.6),
+    new ConeGeometry(0.045, 0.08, 3).rotateX(Math.PI / 2).translate(0, 0, -0.13),
+  );
+}
+
+export function fireflyGeometry(): BufferGeometry {
+  return merge(new OctahedronGeometry(0.038, 0));
 }
 
 // --- island base -----------------------------------------------------------

@@ -7,6 +7,7 @@ import {
   Vector2,
   WebGLRenderTarget,
   type Camera,
+  type Color,
   type Scene,
   type WebGLRenderer,
 } from 'three';
@@ -32,7 +33,13 @@ const BLOOM_RADIUS = 0.4;
  * the era's emissive color, so every era's windows clear the threshold by
  * the same margin and none burns out to white.
  */
-export const GLOW_LUMINANCE = 1.4;
+const GLOW_LUMINANCE = 1.4;
+
+/** Scale for a glow material's color: up to GLOW_LUMINANCE while bloom is on, else 1. */
+export function glowScale(color: Color, bloom: boolean): number {
+  const luminance = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
+  return bloom && luminance > 0 ? GLOW_LUMINANCE / luminance : 1;
+}
 
 const TILT = {
   /** Screen height (0 bottom, 1 top) of the sharpest line: the island's middle. */

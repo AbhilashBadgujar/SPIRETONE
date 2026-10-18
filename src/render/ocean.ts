@@ -149,6 +149,13 @@ if (uAurora > 0.0) {
   setSurf(amount: number): void {
     this.uniforms.uSurf.value = amount;
   }
+
+  /** Wave height above the water level at world (x, z): the vertex shader's displacement, for things afloat. */
+  waveAt(x: number, z: number): number {
+    const u = this.uniforms;
+    const t = u.uTime.value * u.uWaveSpeed.value;
+    return u.uWaveHeight.value * (Math.sin(x * 0.35 + t * 1.3) + Math.sin(z * 0.42 - t * 1.1) + 0.6 * Math.sin((x + z) * 0.8 + t * 2.1));
+  }
 }
 
 /** three's light loop with the sun's shadow scaled by `waterShadow`. */

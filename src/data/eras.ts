@@ -85,6 +85,17 @@ export interface EraPreset {
     waves: number;
     wind: number;
   };
+  /** Scenery on open ground (render/island-view.ts) and the island's life (render/life.ts). */
+  flora: {
+    leaf: number;
+    trunk: number;
+    /** Flowers, and the paint on awnings, washing, boats and clothes. */
+    flowers: readonly number[];
+    /** Share of trees that are pines rather than round. */
+    pines: number;
+  };
+  /** Fireflies drifting over the island at dusk and night; null by day. */
+  fireflies: { color: number; count: number } | null;
 }
 
 export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
@@ -107,6 +118,8 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     bloom: 0.35,
     music: { root: 62, scale: 'major' }, // D
     soundscape: { waves: 1, wind: 0.35 },
+    flora: { leaf: 0x6aa84f, trunk: 0x7a5a3a, flowers: [0xff8fab, 0xffd84d, 0xffffff, 0xb59cff, 0xff8a5c], pines: 0.3 },
+    fireflies: null,
   },
   // Golden hour, stucco, clay roofs, lanterns.
   ERA_2: {
@@ -130,6 +143,9 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     bloom: 0.45,
     music: { root: 57, scale: 'major' }, // A
     soundscape: { waves: 0.8, wind: 0.25 },
+    // Olive trees and tall cypresses.
+    flora: { leaf: 0x7f9a3e, trunk: 0x6b4a2e, flowers: [0xff7a45, 0xffc53d, 0xe85d75, 0xfff1d6, 0x9b6bd6], pines: 0.5 },
+    fireflies: { color: 0xffd27a, count: 10 },
   },
   // Stormy dusk, brass, copper, steam vents.
   ERA_3: {
@@ -150,6 +166,8 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     bloom: 0.5,
     music: { root: 59, scale: 'minor' }, // B minor
     soundscape: { waves: 1, wind: 0.8 },
+    flora: { leaf: 0x55684a, trunk: 0x4a3e36, flowers: [0xd4a72c, 0xd9774b, 0xa8b8a0, 0xc65a5a], pines: 0.7 },
+    fireflies: { color: 0xffb45a, count: 12 },
   },
   // Starfield ocean, obsidian, crystal, aurora.
   ERA_4: {
@@ -170,5 +188,7 @@ export const ERA_PRESETS: Readonly<Record<EraId, EraPreset>> = {
     bloom: 0.5,
     music: { root: 66, scale: 'major' }, // F#
     soundscape: { waves: 0.5, wind: 0.2 },
+    flora: { leaf: 0x5a4c96, trunk: 0x2c2442, flowers: [0x9cf6ff, 0xc3b2ff, 0x7be0ff, 0xffc6f0], pines: 0.5 },
+    fireflies: { color: 0xb8fff0, count: 14 },
   },
 };

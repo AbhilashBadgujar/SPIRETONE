@@ -20,12 +20,18 @@ import type { ColumnId, Grid } from '../sim/grid';
 import type { Island } from '../sim/island';
 import { LAYOUT, columnAngle, columnTopY, columnX, columnZ } from './layout';
 import * as M from './meshes';
-import { GLOW_LUMINANCE } from './post';
+import { glowScale } from './post';
 
 // Draws one island from sim state. sync() rebuilds every instance matrix from
 // scratch, which is cheap at 36 columns and is only called when state changes.
 // dropIn() then animates a column's top (block plus whatever sits on it)
 // falling into place on top of that final state.
+//
+// Besides the structures: each building's dressing (door, floor trims,
+// window boxes, chimney, laundry on its bridges), a little garden on every
+// empty column that the first block clears, and fixed scenery on the beach
+// and round the spire. All of it is picked by hashing the column, so a
+// column always looks the same. `spots` tells life.ts where people can walk.
 
 type Slot =
   | 'base'
@@ -37,9 +43,26 @@ type Slot =
   | 'grass'
   | 'sand'
   | 'rock'
-  | 'marker';
+  | 'patch'
+  | 'tuft'
+  | 'leaf'
+  | 'trunk'
+  | 'flower';
+
+/** Where life.ts can put people and boats, in IslandView root space. Keys survive a resync. */
+export interface LifeSpots {
+  chimneys: Vector3[];
+  plazas: { key: string; x: number; y: number; z: number }[];
+  /** `busy`: a turning cog takes the middle of the deck. */
+  bridges: { key: string; from: Vector3; to: Vector3; busy: boolean }[];
+  piers: { key: string; x: number; z: number; yaw: number }[];
+}
 
 const GOLD = new Color(0xffc83c);
+/** Beach scenery sits on the sand between the outer columns, clear of piers and plazas. */
+const BEACH_RADIUS = LAYOUT.islandRadius - 0.15;
+/** Garden ring round the spire, inside the path villagers stroll (life.ts). */
+const GARDEN_RADIUS = 1.38;
 
 /** Seconds from a drop to the block landing; audio and particles sync to it. */
 export const DROP_FALL_TIME = 0.16;
@@ -70,6 +93,7 @@ const _p = new Vector3();
 const _q = new Quaternion();
 const _s = new Vector3();
 const _c = new Color();
+const _tint = new Color();
 const UP = new Vector3(0, 1, 0);
 
 function place(x: number, y: number, z: number, yaw: number, sx = 1, sy = 1, sz = 1): Matrix4 {
@@ -83,6 +107,8 @@ interface Part {
   geometry: BufferGeometry;
   slot: Slot;
   glow?: boolean;
+  /** false: too small to cast a shadow worth its draw. */
+  shadow?: boolean;
 }
 
 /** One logical mesh made of per-slot instanced parts that share transforms. */
@@ -101,7 +127,7 @@ class Kind {
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
       mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
       mesh.count = 0;
-      mesh.castShadow = !part.glow;
+      mesh.castShadow = !part.glow && part.shadow !== false;
       mesh.receiveShadow = !part.glow;
       // Falling blocks start outside any cached bounds; the island is always on screen anyway.
       mesh.frustumCulled = false;
@@ -155,6 +181,7 @@ export class IslandView {
   readonly ringMaxHeights: number[];
   /** Turntable-space lamp centers of every lighthouse, for the beams. */
   readonly lampPoints: Vector3[] = [];
+  readonly spots: LifeSpots = { chimneys: [], plazas: [], bridges: [], piers: [] };
 
   /** Per column, the instances that drop in with its newest block. */
   private readonly tops: TopRef[][];
@@ -170,11 +197,24 @@ export class IslandView {
   /** Lit windows, lamps and the crystal burn past the bloom threshold (render/post.ts). */
   private bloom = false;
   private preset: EraPreset | null = null;
+  private readonly paints: Color[] = [];
   private last: { island: Island; ev: Evaluation } | null = null;
 
   private readonly blocks: Kind;
   private readonly windows: Kind;
-  private readonly markers: Kind;
+  /** Ground floors: no outward window, the door goes there. */
+  private readonly groundWindows: Kind;
+  private readonly doors: Kind;
+  private readonly trims: Kind;
+  private readonly flowerBoxes: Kind;
+  private readonly laundry: Kind;
+  private readonly plots: Kind;
+  private readonly tufts: Kind;
+  private readonly flowers: Kind;
+  private readonly bushes: Kind;
+  private readonly trees: Kind;
+  private readonly pines: Kind;
+  private readonly boulders: Kind;
   private readonly cottageRoofs: Kind;
   private readonly towerRoofs: Kind;
   private readonly lamps: Kind;
@@ -196,9 +236,8 @@ export class IslandView {
     if (LAYOUT.ringRadius.length !== grid.k.K_RINGS) {
       throw new Error('LAYOUT.ringRadius needs one radius per ring');
     }
-    for (const slot of ['base', 'roof', 'accent', 'water', 'emissive', 'window', 'grass', 'sand', 'rock', 'marker'] as Slot[]) {
-      this.colors[slot] = new Color();
-    }
+    const slots: Slot[] = ['base', 'roof', 'accent', 'water', 'emissive', 'window', 'grass', 'sand', 'rock'];
+    for (const slot of [...slots, 'patch', 'tuft', 'leaf', 'trunk', 'flower'] as Slot[]) this.colors[slot] = new Color();
     this.ringMaxHeights = new Array<number>(grid.k.K_RINGS).fill(0);
     this.tops = Array.from({ length: grid.columnCount }, () => []);
 
@@ -207,10 +246,57 @@ export class IslandView {
     const mats = { solid: this.solid, glow: this.glow };
     const kind = (parts: Part[], capacity: number) => new Kind(parts, capacity, mats, this.root);
 
+    // Scenery: a plot's worth on every column, plus the beach and the garden.
+    const around = grid.k.K_INDICES * 2;
+
     this.blocks = kind([{ geometry: M.blockGeometry(), slot: 'base' }], n * maxCap);
     this.windows = kind([{ geometry: M.windowGeometry(), slot: 'window' }], n * maxCap);
-    this.markers = kind([{ geometry: M.markerGeometry(), slot: 'marker' }], n);
-    this.cottageRoofs = kind([{ geometry: M.cottageRoofGeometry(), slot: 'roof' }], n);
+    this.groundWindows = kind([{ geometry: M.windowGeometry(false), slot: 'window' }], n);
+    this.doors = kind(
+      [
+        { geometry: M.awningGeometry(), slot: 'roof' },
+        { geometry: M.doorGeometry(), slot: 'trunk', shadow: false },
+        { geometry: M.doorLanternGeometry(), slot: 'emissive', glow: true },
+      ],
+      n,
+    );
+    this.trims = kind([{ geometry: M.trimGeometry(), slot: 'accent' }], n * maxCap);
+    this.flowerBoxes = kind(
+      [
+        { geometry: M.flowerBloomsGeometry(), slot: 'flower', shadow: false },
+        { geometry: M.flowerBoxGeometry(), slot: 'accent', shadow: false },
+      ],
+      n * maxCap,
+    );
+    this.laundry = kind([{ geometry: M.laundryGeometry(), slot: 'flower' }], grid.edges.length * 3);
+    this.plots = kind([{ geometry: M.plotGeometry(), slot: 'patch', shadow: false }], n);
+    this.tufts = kind([{ geometry: M.tuftGeometry(), slot: 'tuft', shadow: false }], n * 3 + around * 2);
+    this.flowers = kind(
+      [
+        { geometry: M.bloomGeometry(), slot: 'flower', shadow: false },
+        { geometry: M.stemGeometry(), slot: 'leaf', shadow: false },
+      ],
+      n * 3 + around * 2,
+    );
+    this.bushes = kind([{ geometry: M.bushGeometry(), slot: 'leaf' }], n + around);
+    const tree = (canopy: BufferGeometry, trunk: BufferGeometry) =>
+      kind(
+        [
+          { geometry: canopy, slot: 'leaf' },
+          { geometry: trunk, slot: 'trunk' },
+        ],
+        n + around,
+      );
+    this.trees = tree(M.treeCanopyGeometry(), M.treeTrunkGeometry());
+    this.pines = tree(M.pineCanopyGeometry(), M.pineTrunkGeometry());
+    this.boulders = kind([{ geometry: M.boulderGeometry(), slot: 'rock' }], n + around);
+    this.cottageRoofs = kind(
+      [
+        { geometry: M.cottageRoofGeometry(), slot: 'roof' },
+        { geometry: M.chimneyGeometry(), slot: 'accent' },
+      ],
+      n,
+    );
     this.towerRoofs = kind(
       [
         { geometry: M.towerRoofGeometry(), slot: 'roof' },
@@ -252,7 +338,18 @@ export class IslandView {
     this.kinds = [
       this.blocks,
       this.windows,
-      this.markers,
+      this.groundWindows,
+      this.doors,
+      this.trims,
+      this.flowerBoxes,
+      this.laundry,
+      this.plots,
+      this.tufts,
+      this.flowers,
+      this.bushes,
+      this.trees,
+      this.pines,
+      this.boulders,
       this.cottageRoofs,
       this.towerRoofs,
       this.lamps,
@@ -326,11 +423,9 @@ export class IslandView {
     }
   }
 
-  /** Glow scale: lifts the era's emissive color to GLOW_LUMINANCE while bloom is on. */
   private applyGlow(): void {
     const e = this.colors.emissive;
-    const luminance = 0.2126 * e.r + 0.7152 * e.g + 0.0722 * e.b;
-    const boost = this.bloom && luminance > 0 ? GLOW_LUMINANCE / luminance : 1;
+    const boost = glowScale(e, this.bloom);
     this.glow.color.setScalar(boost);
     this.crystalMaterial.color.copy(e).multiplyScalar(boost);
   }
@@ -346,12 +441,22 @@ export class IslandView {
     c.grass.setHex(p.island.grass);
     c.sand.setHex(p.island.sand);
     c.rock.setHex(p.island.rock);
-    c.marker.setHex(p.island.grass).offsetHSL(0, -0.05, -0.08);
+    c.patch.setHex(p.island.grass).offsetHSL(0, 0.03, -0.035);
+    c.tuft.setHex(p.island.grass).offsetHSL(0.01, 0.08, -0.11);
+    c.leaf.setHex(p.flora.leaf);
+    c.trunk.setHex(p.flora.trunk);
+    c.flower.setHex(p.flora.flowers[0]);
+    this.paints.length = 0;
+    for (const hex of p.flora.flowers) this.paints.push(new Color(hex));
     if (p.litWindows) c.window.setHex(p.palette.emissive);
     else c.window.setHex(p.palette.accent).multiplyScalar(0.45);
 
-    this.windows.meshes[0].material = p.litWindows ? this.glow : this.solid;
-    this.windows.meshes[0].castShadow = !p.litWindows;
+    for (const kind of [this.windows, this.groundWindows]) {
+      kind.meshes[0].material = p.litWindows ? this.glow : this.solid;
+      kind.meshes[0].castShadow = !p.litWindows;
+    }
+    // Door lanterns only once the windows are lit.
+    this.doors.meshes[2].visible = p.litWindows;
     this.solid.roughness = p.roughness;
     this.rockMaterial.color.copy(c.rock);
     this.sandMaterial.color.copy(c.sand);
@@ -367,11 +472,16 @@ export class IslandView {
     const g = this.grid;
     const H = LAYOUT.blockHeight;
     const colors = this.colors;
+    const spots = this.spots;
 
     for (const k of this.kinds) k.reset();
     this.gearBases.length = 0;
     this.ringMaxHeights.fill(0);
     this.lampPoints.length = 0;
+    spots.chimneys.length = 0;
+    spots.plazas.length = 0;
+    spots.bridges.length = 0;
+    spots.piers.length = 0;
     for (const refs of this.tops) refs.length = 0;
 
     for (let c = 0; c < g.columnCount; c++) {
@@ -386,33 +496,50 @@ export class IslandView {
 
       switch (structure) {
         case 'ST_EMPTY':
-          this.markers.push(place(x, LAYOUT.groundY, z, yaw), colors);
+          this.pushPlot(c, x, z, yaw);
           continue;
         case 'ST_PLAZA':
           continue; // drawn per group below
         case 'ST_PIER': {
           const m = place(x, 0, z, yaw);
           track(top, this.piers, this.piers.push(m, colors), 0, m);
+          spots.piers.push({ key: `q${c}`, x, z, yaw });
           continue;
         }
         default:
           break;
       }
 
+      // Each building stands a hair off the grid, so a street doesn't look stamped out.
+      const turn = yaw + (jitter(c * 53 + 3) - 0.5) * 0.1;
+      const windowBoxes = structure !== 'ST_LIGHTHOUSE' && jitter(c * 71 + 5) < 0.55;
       for (let level = 0; level < h; level++) {
-        const m = place(x, LAYOUT.groundY + level * H, z, yaw);
-        const b = this.blocks.push(m, colors, this.blockColor(island, structure, c, level));
-        const w = this.windows.push(m, colors);
-        if (level === h - 1) {
-          track(top, this.blocks, b, 0, m);
-          track(top, this.windows, w, 0, m);
+        const m = place(x, LAYOUT.groundY + level * H, z, turn);
+        const onTop = level === h - 1;
+        const add = (kind: Kind, tint?: Color) => {
+          const i = kind.push(m, colors, tint);
+          if (onTop) track(top, kind, i, 0, m);
+        };
+        add(this.blocks, this.blockColor(island, structure, c, level));
+        if (level === 0) {
+          add(this.groundWindows);
+          add(this.doors, this.paint(c, 1));
+        } else {
+          add(this.windows);
+          add(this.trims);
+          if (windowBoxes) add(this.flowerBoxes, this.paint(c, level + 2));
         }
       }
-      const cap = place(x, columnTopY(h), z, yaw);
-      const dress =
-        structure === 'ST_COTTAGE' ? this.cottageRoofs : structure === 'ST_TOWER' ? this.towerRoofs : this.lamps;
-      track(top, dress, dress.push(cap, colors), H, cap);
-      if (structure === 'ST_LIGHTHOUSE') this.lampPoints.push(new Vector3(x, columnTopY(h) + LAMP_CENTER, z));
+      const cap = place(x, columnTopY(h), z, turn);
+      if (structure === 'ST_COTTAGE') {
+        track(top, this.cottageRoofs, this.cottageRoofs.push(cap, colors, this.roofColor(c)), H, cap);
+        spots.chimneys.push(new Vector3(M.CHIMNEY_TOP.x, M.CHIMNEY_TOP.y, M.CHIMNEY_TOP.z).applyMatrix4(cap));
+      } else if (structure === 'ST_TOWER') {
+        track(top, this.towerRoofs, this.towerRoofs.push(cap, colors, this.roofColor(c)), H, cap);
+      } else {
+        track(top, this.lamps, this.lamps.push(cap, colors), H, cap);
+        this.lampPoints.push(new Vector3(x, columnTopY(h) + LAMP_CENTER, z));
+      }
     }
 
     for (const anchor of island.plazas) this.pushPlaza(plazaGroup(g, anchor));
@@ -423,18 +550,42 @@ export class IslandView {
       const az = columnZ(g, e.a);
       const dx = columnX(g, e.b) - ax;
       const dz = columnZ(g, e.b) - az;
+      const span = Math.hypot(dx, dz);
       const floor = Math.min(island.heights[e.a], island.heights[e.b]) - 1;
-      const length = Math.hypot(dx, dz) - LAYOUT.blockDepth * 0.3;
+      const length = span - LAYOUT.blockDepth * 0.3;
       const deckY = LAYOUT.groundY + floor * H + 0.14;
       const yaw = Math.atan2(dx, dz);
-      this.bridges.push(place(ax + dx / 2, deckY, az + dz / 2, yaw, 1, 1, length), colors);
+      const mx = ax + dx / 2;
+      const mz = az + dz / 2;
+      this.bridges.push(place(mx, deckY, mz, yaw, 1, 1, length), colors);
       // Overclock (Era III+): the bridge's cog stands on its deck and turns.
-      if (this.preset.gears && ev.columns[e.a].overclock + ev.columns[e.b].overclock > 0) {
-        const m = place(ax + dx / 2, deckY + M.GEAR_RADIUS + 0.06, az + dz / 2, yaw).clone();
+      const geared = this.preset.gears && ev.columns[e.a].overclock + ev.columns[e.b].overclock > 0;
+      if (geared) {
+        const m = place(mx, deckY + M.GEAR_RADIUS + 0.06, mz, yaw).clone();
         this.gears.push(m, colors);
         this.gearBases.push(m);
       }
+      const ux = dx / span;
+      const uz = dz / span;
+      // Washing pegged along one rope (the bridge's local +x side).
+      if (jitter(e.id * 23 + 9) < 0.45) {
+        for (const k of [-1, 0, 1]) {
+          const lx = mx + ux * k * 0.2 + uz * 0.165;
+          const lz = mz + uz * k * 0.2 - ux * 0.165;
+          this.laundry.push(place(lx, deckY + 0.215, lz, yaw), colors, this.paint(e.id + 40, k + 1));
+        }
+      }
+      const walk = length / 2 - 0.14;
+      const deck = deckY + 0.02;
+      spots.bridges.push({
+        key: `b${e.id}`,
+        from: new Vector3(mx - ux * walk, deck, mz - uz * walk),
+        to: new Vector3(mx + ux * walk, deck, mz + uz * walk),
+        busy: geared,
+      });
     }
+
+    this.pushSurrounds();
 
     for (const k of this.kinds) k.commit();
     this.applyDrops();
@@ -479,6 +630,7 @@ export class IslandView {
     const slab = this.plazaSlabs.push(slabM, this.colors);
     const fountainM = place(cx, LAYOUT.groundY + LAYOUT.plazaHeight, cz, yaw);
     const fountain = this.fountains.push(fountainM, this.colors);
+    this.spots.plazas.push({ key: `p${a}`, x: cx, y: LAYOUT.groundY + LAYOUT.plazaHeight, z: cz });
     // Whichever of the four columns completed the plaza drops the whole slab in.
     for (const col of group) {
       track(this.tops[col], this.plazaSlabs, slab, 0, slabM);
@@ -486,11 +638,98 @@ export class IslandView {
     }
   }
 
+  /** An empty column's patch of garden: tufts and flowers, now and then a bush, tree or rock. */
+  private pushPlot(c: ColumnId, x: number, z: number, yaw: number): void {
+    const y = LAYOUT.groundY;
+    this.plots.push(place(x, y, z, yaw), this.colors);
+    const r = (k: number) => jitter(c * 131 + k * 17);
+    this.scatter(x, y, z, c * 7 + 1, 2 + Math.floor(r(1) * 2), Math.floor(r(2) * 4), 0.1, 0.28);
+    const fx = x + (r(4) - 0.5) * 0.14;
+    const fz = z + (r(5) - 0.5) * 0.14;
+    const feature = r(3);
+    if (feature < 0.15) this.pushTree(fx, y, fz, c * 7 + 2, 0.6 + r(6) * 0.25);
+    else if (feature < 0.38) this.pushBush(fx, y, fz, c * 7 + 3, 0.8 + r(6) * 0.3);
+    else if (feature < 0.48) this.pushBoulder(fx, y, fz, c * 7 + 4, 0.8 + r(6) * 0.4);
+  }
+
+  /** Fixed scenery: beach growth and rocks between the outer columns, and a garden round the spire. */
+  private pushSurrounds(): void {
+    const n = this.grid.k.K_INDICES;
+    for (let i = 0; i < n; i++) {
+      const a = ((i + 0.5) / n) * Math.PI * 2;
+      const seed = 500 + i * 13;
+      const bx = Math.sin(a) * BEACH_RADIUS;
+      const bz = Math.cos(a) * BEACH_RADIUS;
+      const roll = jitter(seed);
+      if (roll < 0.45) this.pushTree(bx, 0, bz, seed + 1, 0.8 + jitter(seed + 2) * 0.35);
+      else if (roll < 0.75) this.pushBush(bx, 0, bz, seed + 1, 1 + jitter(seed + 2) * 0.3);
+      else this.pushBoulder(bx, 0, bz, seed + 1, 1.3 + jitter(seed + 2) * 0.5);
+      // A pebble beside it, along the shore.
+      const b = a + (jitter(seed + 3) < 0.5 ? -1 : 1) * 0.07;
+      this.pushBoulder(Math.sin(b) * BEACH_RADIUS, 0, Math.cos(b) * BEACH_RADIUS, seed + 4, 0.45 + jitter(seed + 5) * 0.3);
+
+      const gx = Math.sin(a) * GARDEN_RADIUS;
+      const gz = Math.cos(a) * GARDEN_RADIUS;
+      if (i % 3 === 0) this.pushBush(gx, LAYOUT.groundY, gz, seed + 6, 0.75);
+      this.scatter(gx, LAYOUT.groundY, gz, seed + 7, 1, 2, 0.06, 0.18);
+    }
+  }
+
+  /** `tufts` grass tufts then `flowers` flowers, scattered rMin..rMax round (x, z). */
+  private scatter(x: number, y: number, z: number, seed: number, tufts: number, flowers: number, rMin: number, rMax: number): void {
+    for (let i = 0; i < tufts + flowers; i++) {
+      const a = jitter(seed * 3.1 + i * 7.7) * Math.PI * 2;
+      const d = rMin + jitter(seed * 5.3 + i * 3.9) * (rMax - rMin);
+      const spin = jitter(seed * 1.7 + i * 11.3) * Math.PI * 2;
+      const s = 0.8 + jitter(seed * 2.9 + i * 5.1) * 0.45;
+      const m = place(x + Math.cos(a) * d, y, z + Math.sin(a) * d, spin, s, s, s);
+      if (i < tufts) this.tufts.push(m, this.colors);
+      else this.flowers.push(m, this.colors, this.paint(seed, i));
+    }
+  }
+
+  private pushTree(x: number, y: number, z: number, seed: number, scale: number): void {
+    const pine = jitter(seed * 1.3) < (this.preset?.flora.pines ?? 0);
+    const kind = pine ? this.pines : this.trees;
+    // Pines stand a little taller and narrower than round trees.
+    const wide = pine ? scale * 0.85 : scale;
+    const tall = pine ? scale * 1.15 : scale;
+    kind.push(place(x, y, z, jitter(seed * 2.3) * Math.PI * 2, wide, tall, wide), this.colors, this.leafColor(seed));
+  }
+
+  private pushBush(x: number, y: number, z: number, seed: number, scale: number): void {
+    this.bushes.push(place(x, y, z, jitter(seed * 2.3) * Math.PI * 2, scale, scale, scale), this.colors, this.leafColor(seed));
+  }
+
+  private pushBoulder(x: number, y: number, z: number, seed: number, scale: number): void {
+    const tint = _tint.copy(this.colors.rock).offsetHSL(0, 0, 0.06 + (jitter(seed * 3.7) - 0.5) * 0.1);
+    this.boulders.push(place(x, y, z, jitter(seed * 2.3) * Math.PI * 2, scale, scale, scale), this.colors, tint);
+  }
+
+  private leafColor(seed: number): Color {
+    return _tint.copy(this.colors.leaf).offsetHSL((jitter(seed * 4.1) - 0.5) * 0.05, 0, (jitter(seed * 6.7) - 0.5) * 0.12);
+  }
+
+  /** One of the era's flower colors, picked by hash: blooms, awnings, washing. */
+  private paint(seed: number, k: number): Color {
+    const i = Math.floor(jitter(seed * 97 + k * 13) * this.paints.length);
+    return this.paints[i] ?? this.colors.flower;
+  }
+
+  /** Each roof a shade of its own. */
+  private roofColor(c: ColumnId): Color {
+    return _tint.copy(this.colors.roof).offsetHSL((jitter(c * 29 + 1) - 0.5) * 0.03, 0, (jitter(c * 37 + 2) - 0.5) * 0.1);
+  }
+
   private blockColor(island: Island, structure: StructureId, c: ColumnId, level: number): Color {
     if (island.golden[c]) return GOLD;
     // Lighthouses read as striped towers.
     if (structure === 'ST_LIGHTHOUSE' && level % 2 === 1) return this.colors.roof;
-    return _c.copy(this.colors.base).offsetHSL(0, 0, (jitter(c * 31 + level * 7) - 0.5) * 0.07);
+    // A shade per building (so its floors read as one), and a whisper per floor.
+    const hue = (jitter(c * 31 + 1) - 0.5) * 0.04;
+    const sat = (jitter(c * 43 + 2) - 0.5) * 0.12;
+    const light = (jitter(c * 59 + 3) - 0.5) * 0.08 + (jitter(c * 31 + level * 7) - 0.5) * 0.025;
+    return _c.copy(this.colors.base).offsetHSL(hue, sat, light);
   }
 }
 
